@@ -10,7 +10,7 @@ ValueError: y1 must be greater than or equal to y0
 
 <details>
   <summary>Solution</summary>
-  Ensure you are using the latest script (last update: 14.08.2023, 9:45 PM GMT+2). The issue arises because the "pillow" package version used was slightly old. The code has been fixed for the new 10.0.0 version of "pillow".
+  Ensure you are using the latest script. The issue arises because the "pillow" python package version used was outdated. The update was fixed in the python package "pillow" 10.0.0 and newer.
 </details>
 
 ---
