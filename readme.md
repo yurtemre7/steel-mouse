@@ -4,6 +4,9 @@ This is a handy Windows application that retrieves the battery level of your Ste
 
 ![System Tray Image of the App SteelMouse](assets/image.png)
 
+## Website
+[MouseBattery Website](https://yurtemre7.github.io/mouse-battery/)
+
 ## Table of Contents
 
 - [Usage](#usage)
