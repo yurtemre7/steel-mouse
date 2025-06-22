@@ -1,11 +1,11 @@
-# Steelseries Mouse Battery Retrieval
+# SteelMouse
 
 This is a handy Windows application that retrieves the battery level of your Steelseries mouse and displays it in the system tray.
 
 ![System Tray Image of the App SteelMouse](assets/image.png)
 
 ## Website
-[MouseBattery Website](https://yurtemre7.github.io/mouse-battery/)
+[SteelMouse Website](https://yurtemre7.github.io/mouse-battery/)
 
 ## Table of Contents
 
