@@ -7,6 +7,7 @@ last_update = None
 battery_level = None
 battery_charging = None
 icon = None
+image = None
 stopped = False
 event = None
 
@@ -37,7 +38,6 @@ def load_time_delta():
         time_delta = time_delta_default
 
 
-
 # Fuction to create the menu
 def create_menu(name, battery_level, last_update, battery_charging):
     return pystray.Menu(
@@ -51,10 +51,7 @@ def create_menu(name, battery_level, last_update, battery_charging):
             lambda: None,
         ),
         pystray.MenuItem(
-            (
-                "Status: Charging"
-                if battery_charging else "Status: Discharging"
-            ),
+            ("Status: Charging" if battery_charging else "Status: Discharging"),
             lambda: None,
         ),
         pystray.MenuItem(
@@ -67,9 +64,7 @@ def create_menu(name, battery_level, last_update, battery_charging):
                         text=f"{int(t / 60)} minute{'s' if t != 60 else ''}",
                         action=set_time_delta,
                         checked=lambda t=t: t == time_delta,
-                        default=(
-                            t == time_delta
-                        ),
+                        default=(t == time_delta),
                         radio=True,
                     )
                     for t in time_deltas
@@ -117,7 +112,9 @@ def get_battery(event: threading.Event):
                     icon.title = f"Battery: {str(f'{battery_level}%' if battery_level is not None else 'N/A')}"
                     icon.update_menu()
                 load_time_delta()
-                sleeptime = time_delta if battery["level"] is not None else time_error_retry
+                sleeptime = (
+                    time_delta if battery["level"] is not None else time_error_retry
+                )
                 event.clear()
                 event.wait(timeout=sleeptime)
             else:
@@ -126,7 +123,7 @@ def get_battery(event: threading.Event):
         except Exception as e:
             print(f"Error: {e}\n\nSleeping for {time_error} seconds...")
             time.sleep(time_error)
-    
+
     if mouse is not None:
         mouse.close()
     print("Stopping thread")
@@ -134,8 +131,7 @@ def get_battery(event: threading.Event):
 
 # Create the battery icon based on the battery level and charging status
 def create_battery_icon():
-    global battery_level
-    global battery_charging
+    global battery_level, battery_charging
     image = Image.new("RGB", (100, 100), color="white")
     draw = ImageDraw.Draw(image)
 
@@ -213,8 +209,7 @@ def quit_app(icon, item):
 
 # This is the main function, where we initialize the system tray icon and start the thread
 def main():
-    global icon
-    global event
+    global icon, event, image
 
     event = threading.Event()
     image = create_battery_icon()
