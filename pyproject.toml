@@ -8,7 +8,7 @@ dependencies = [
     "hidapi==0.14.0.post4",
     "pillow==11.2.1",
     "pystray==0.19.5",
-    "rivalcfg==4.14.0",
+    "rivalcfg==4.15.0",
     "setuptools==80.8.0",
     "six==1.17.0",
 ]

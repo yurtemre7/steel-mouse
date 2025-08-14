@@ -41,7 +41,7 @@ requires-dist = [
     { name = "hidapi", specifier = "==0.14.0.post4" },
     { name = "pillow", specifier = "==11.2.1" },
     { name = "pystray", specifier = "==0.19.5" },
-    { name = "rivalcfg", specifier = "==4.14.0" },
+    { name = "rivalcfg", specifier = "==4.15.0" },
     { name = "setuptools", specifier = "==80.8.0" },
     { name = "six", specifier = "==1.17.0" },
 ]
@@ -147,15 +147,15 @@ wheels = [
 
 [[package]]
 name = "rivalcfg"
-version = "4.14.0"
+version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "hidapi" },
     { name = "setuptools" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/62/33/d414ba29706f80ebd52804fbafa45decb8999d41b1ec8fe3d76ec71b9766/rivalcfg-4.14.0.tar.gz", hash = "sha256:671aed7bf38a7560509b3347de9af800add904bc03827c918875e627b9925c61", size = 50185, upload-time = "2024-10-29T15:53:18.628Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/b4/38422c1b55959f29f5ad3326c21a6c95603a1fbcb863d3ab3cde8c48cc80/rivalcfg-4.15.0.tar.gz", hash = "sha256:3973bee0cdcdbefee8cc4580caf4a0df6c068b6da59a300a4a7142a77aca21c5", size = 50345, upload-time = "2025-05-20T10:55:56.598Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/85/bfc12934f03b6e5e7672b004ed8c857f93882c932bf4fb3952ecb45ebda8/rivalcfg-4.14.0-py3-none-any.whl", hash = "sha256:d84b205169bbebdcfe18caa4039d5088cca4485a7c8287cf7bbfc24191f20ba7", size = 79865, upload-time = "2024-10-29T15:53:17.514Z" },
+    { url = "https://files.pythonhosted.org/packages/68/ba/f0f116f8cd9c3e5d1d7ccd2d84c70abb63856a792eed4d7ae4c79d5861be/rivalcfg-4.15.0-py3-none-any.whl", hash = "sha256:f5c7e18f835239128ad319b6748f16d9d53013bbb42976188c50217c0d3bdc19", size = 80375, upload-time = "2025-05-20T10:55:55.489Z" },
 ]
 
 [[package]]
