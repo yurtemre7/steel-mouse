@@ -43,7 +43,7 @@ Once the application is started, you can hover over the icon to see the battery 
 #### Manual installation
 
 1. Download the Git repository as a zip file and extract it somewhere (or clone it with Git).
-2. Install Python 3 (<https://www.python.org/downloads/>) and ensure you check the box to add it to your PATH.
+2. Install [Python 3](<https://www.python.org/downloads/>) and ensure you check the box to add it to your PATH.<br>*Optionally*, you can also use [uv](https://github.com/astral-sh/uv?tab=readme-ov-file#installation) for this project.
 3. Install the following packages via the `pip install -r requirements.txt` command in the `mouse-battery` folder.
 4. Run the script:
    - Place the `start_mouse.bat` file as a shortcut in your startup folder (C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup).
@@ -52,7 +52,7 @@ Once the application is started, you can hover over the icon to see the battery 
 
 ## Building application and installer from source
 
-To build the application yourself, check out [`building.md`](./building.md)
+To build the application yourself, check out [`BUILDING.md`](./BUILDING.md)
 
 ## Supported Devices
 
@@ -60,7 +60,7 @@ The `rivalcfg` library supports a variety of devices. A complete list of support
 
 ## Troubleshooting
 
-If you encounter any issues, first check the [`knownissues.md`](./knownissues.md) file in the repository to see if your problem is already listed.
+If you encounter any issues, first check the [`KNOWNISSUES.md`](./KNOWNISSUES.md) file in the repository to see if your problem is already listed.
 
 If your problem is not listed, you can run the script in the `mouse-battery` folder. Note the output of the script and open an issue with the output and your mouse model. Provide additional details, such as whether you have multiple mice connected, your connection mode, etc.
 
