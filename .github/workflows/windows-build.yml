@@ -53,7 +53,7 @@ jobs:
 
       - name: Create GitHub release
         id: create_release
-        uses: actions/create-release@v1
+        uses: actions/create-release@v1.1.4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -64,9 +64,9 @@ jobs:
           prerelease: false
 
       - name: Upload installer to release
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@v1.0.1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./innosetup/SteelMouse_Setup.exe
+          asset_path: 'D:\a\steel-mouse\steel-mouse\innosetup\SteelMouse_Setup.exe'
           asset_name: SteelMouse_Setup-${{ env.APP_VERSION }}.exe
           asset_content_type: application/octet-stream
