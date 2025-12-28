@@ -66,6 +66,8 @@ jobs:
 
       - name: Upload installer to release
         uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: 'D:\a\steel-mouse\steel-mouse\innosetup\SteelMouse_Setup.exe'
