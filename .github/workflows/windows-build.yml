@@ -54,20 +54,14 @@ jobs:
       - name: Create GitHub release
         id: create_release
         uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ env.APP_VERSION }}
           release_name: SteelMouse v${{ env.APP_VERSION }}
           body: Release for SteelMouse v${{ env.APP_VERSION }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload executable to release
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/mouse.exe
-          asset_name: mouse-${{ env.APP_VERSION }}.exe
-          asset_content_type: application/octet-stream
+          draft: false
+          prerelease: false
 
       - name: Upload installer to release
         uses: actions/upload-release-asset@v1

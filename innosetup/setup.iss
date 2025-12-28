@@ -2,7 +2,7 @@
 
 [Setup]
 AppName={#MyAppName}
-AppVersion=1.2.2
+AppVersion=1.2.3
 DefaultDirName={commonpf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 UninstallDisplayIcon={app}\mouse.exe
