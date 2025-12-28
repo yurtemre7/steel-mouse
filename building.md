@@ -34,3 +34,7 @@ Now you have an installer that you can distribute to users. They can run this in
 ## 3. Creating the release
 
 After creating the standalone executable and the installer, you can create a release for the application.
+
+## CI / GitHub Actions
+
+The repository includes a Windows GitHub Actions workflow that builds the standalone executable with PyInstaller and compiles the Inno Setup installer. You can trigger it manually from the Actions tab (use the "Run workflow" button) or by pushing changes to `mouse.py`, `requirements.txt`, or the workflow file itself. The workflow uploads the installer (`SteelMouse_Setup.exe`).
