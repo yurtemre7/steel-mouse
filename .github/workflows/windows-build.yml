@@ -30,7 +30,7 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller --noconsole --onefile --name mouse mouse.py
+          pyinstaller --onefile --noconsole --add-data images:images mouse.py
 
       - name: Install Inno Setup
         run: |
@@ -42,14 +42,37 @@ jobs:
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'innosetup\setup.iss'
         shell: powershell
 
-      - name: Upload executable artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: SteelMouseExecutable
-          path: dist/mouse.exe
+      - name: Read AppVersion from Inno Setup script
+        id: read_version
+        run: |
+          $ver = (Select-String -Path 'innosetup\setup.iss' -Pattern '^\s*AppVersion\s*=\s*(\S+)' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+          if (-not $ver) { Write-Error "AppVersion not found in innosetup\setup.iss"; exit 1 }
+          Write-Host "Found AppVersion: $ver"
+          Add-Content -Path $env:GITHUB_ENV -Value "APP_VERSION=$ver"
+        shell: powershell
 
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub release
+        id: create_release
+        uses: actions/create-release@v1
         with:
-          name: SteelMouseInstaller
-          path: innosetup/SteelMouse_Setup.exe
+          tag_name: v${{ env.APP_VERSION }}
+          release_name: SteelMouse v${{ env.APP_VERSION }}
+          body: Release for SteelMouse v${{ env.APP_VERSION }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload executable to release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: dist/mouse.exe
+          asset_name: mouse-${{ env.APP_VERSION }}.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload installer to release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: innosetup/SteelMouse_Setup.exe
+          asset_name: SteelMouse_Setup-${{ env.APP_VERSION }}.exe
+          asset_content_type: application/octet-stream
