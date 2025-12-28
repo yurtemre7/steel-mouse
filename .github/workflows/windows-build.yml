@@ -58,8 +58,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ env.APP_VERSION }}
-          release_name: SteelMouse v${{ env.APP_VERSION }}
-          body: Release for SteelMouse v${{ env.APP_VERSION }}
+          release_name: v${{ env.APP_VERSION }}
+          body: Generated Release for SteelMouse v${{ env.APP_VERSION }} by Github Actions.
           draft: false
           prerelease: false
 
