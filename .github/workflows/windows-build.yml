@@ -62,6 +62,7 @@ jobs:
           body: Generated Release for SteelMouse v${{ env.APP_VERSION }} by Github Actions.
           draft: false
           prerelease: false
+          generate_release_notes: true
 
       - name: Upload installer to release
         uses: actions/upload-release-asset@v1.0.1
