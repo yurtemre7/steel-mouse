@@ -185,29 +185,33 @@ def create_battery_icon():
 
     if battery_level is not None:
         if battery_charging:
-            draw_battery_indicator("orange", battery_level)
+            color = "orange"
+        elif battery_level < 20:
+            color = "red"
+        elif battery_level < 50:
+            color = "yellow"
         else:
-            if battery_level < 20:
-                draw_battery_indicator("red", battery_level)
-            elif battery_level < 50:
-                draw_battery_indicator("yellow", battery_level)
-            else:
-                draw_battery_indicator("green", battery_level)
+            color = "green"
+
         if display_mode == "icon":
-            text = f"{battery_level}%"
-            font = ImageFont.load_default()
+            text = str(battery_level)
+            font_size = 72 if len(text) <= 2 else 52
+            font = ImageFont.load_default(size=font_size)
             text_bbox = draw.textbbox((0, 0), text, font=font)
             text_width = text_bbox[2] - text_bbox[0]
             text_height = text_bbox[3] - text_bbox[1]
-            text_position = ((100 - text_width) / 2, (100 - text_height) / 2)
+            text_x = (100 - text_width) / 2
+            text_y = (100 - text_height) / 2
             draw.text(
-                text_position,
+                (text_x, text_y),
                 text,
-                fill=(20, 20, 20),
+                fill=color,
                 font=font,
-                stroke_width=1,
-                stroke_fill=(240, 240, 240),
+                stroke_width=2,
+                stroke_fill="black",
             )
+        else:
+            draw_battery_indicator(color, battery_level)
     else:
         error = load_image("error")
 
