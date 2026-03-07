@@ -3,3 +3,5 @@ dist
 *.spec
 innosetup/*.exe
 innosetup/*.zip
+__pycache__/
+*.pyc
