@@ -60,7 +60,7 @@ def save_display_mode():
         f.write(display_mode)
 
 
-# Fuction to create the menu
+# Function to create the menu
 def create_menu(name, battery_level, last_update, battery_charging):
     return pystray.Menu(
         pystray.MenuItem(
@@ -203,10 +203,10 @@ def create_battery_icon():
             draw.text(
                 text_position,
                 text,
-                fill="white",
+                fill=(20, 20, 20),
                 font=font,
                 stroke_width=1,
-                stroke_fill=(32, 32, 32),
+                stroke_fill=(240, 240, 240),
             )
     else:
         error = load_image("error")
