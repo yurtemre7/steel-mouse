@@ -121,6 +121,34 @@ def load_image(image_name):
     return Image.open(f"{image_directory}{image_name}.png")
 
 
+def get_icon_text_font(draw, text):
+    digit_count = len(text)
+    if digit_count == 1:
+        max_font_size = 104
+        min_padding = 10
+    elif digit_count == 2:
+        max_font_size = 76
+        min_padding = 6
+    else:
+        max_font_size = 52
+        min_padding = 5
+
+    for font_size in range(max_font_size, 11, -2):
+        font = ImageFont.load_default(size=font_size)
+        left, top, right, bottom = draw.textbbox(
+            (50, 50), text, font=font, anchor="mm"
+        )
+        if (
+            left >= min_padding
+            and top >= min_padding
+            and right <= 100 - min_padding
+            and bottom <= 100 - min_padding
+        ):
+            return font
+
+    return ImageFont.load_default(size=36)
+
+
 # Function to get the battery data
 def get_battery(event: threading.Event):
     global stopped, icon, battery_level, last_update, battery_charging
@@ -195,18 +223,13 @@ def create_battery_icon():
 
         if display_mode == "icon":
             text = str(battery_level)
-            font_size = 72 if len(text) <= 2 else 56
-            font = ImageFont.load_default(size=font_size)
-            text_bbox = draw.textbbox((0, 0), text, font=font)
-            text_width = text_bbox[2] - text_bbox[0]
-            text_height = text_bbox[3] - text_bbox[1]
-            text_x = (100 - text_width) / 2
-            text_y = (100 - text_height) / 2
+            font = get_icon_text_font(draw, text)
             draw.text(
-                (text_x, text_y),
+                (50, 50),
                 text,
                 fill=color,
                 font=font,
+                anchor="mm",
             )
         else:
             draw_battery_indicator(color, battery_level)
