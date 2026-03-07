@@ -1,6 +1,6 @@
 # Import the essential modules
 import rivalcfg, pystray, os, time, threading
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 # Our state variables
 last_update = None
@@ -17,6 +17,8 @@ time_error_retry = 1 / 20  # Retry every 1/20 seconds if an error occurs
 time_delta = time_delta_default
 time_deltas = [60, 300, 600, 1800, 3600]  # 1min, 5min, 10min, 30min, 1h
 time_error = 60 * 0.2  # 60s * 0.2 = 12s
+display_mode_default = "hover"
+display_mode = display_mode_default
 
 directory = f"{os.path.dirname(os.path.realpath(__file__))}/"
 image_directory = f"{directory}images/"
@@ -38,7 +40,27 @@ def load_time_delta():
         time_delta = time_delta_default
 
 
-# Fuction to create the menu
+def load_display_mode():
+    global display_mode
+    try:
+        with open(f"{directory}display_mode.txt", "r") as f:
+            content = f.read().strip().lower()
+            if content in ["hover", "icon"]:
+                display_mode = content
+            else:
+                display_mode = display_mode_default
+            print(f"Display mode loaded: {display_mode}")
+    except FileNotFoundError:
+        print("No display_mode.txt found, using default value.")
+        display_mode = display_mode_default
+
+
+def save_display_mode():
+    with open(f"{directory}display_mode.txt", "w+") as f:
+        f.write(display_mode)
+
+
+# Function to create the menu
 def create_menu(name, battery_level, last_update, battery_charging):
     return pystray.Menu(
         pystray.MenuItem(
@@ -71,6 +93,25 @@ def create_menu(name, battery_level, last_update, battery_charging):
                 ],
             ),
         ),
+        pystray.MenuItem(
+            text="Tray battery display",
+            action=pystray.Menu(
+                pystray.MenuItem(
+                    text="Hover for percentage",
+                    action=set_display_mode,
+                    checked=lambda _: display_mode == "hover",
+                    default=(display_mode == "hover"),
+                    radio=True,
+                ),
+                pystray.MenuItem(
+                    text="Show percentage on icon",
+                    action=set_display_mode,
+                    checked=lambda _: display_mode == "icon",
+                    default=(display_mode == "icon"),
+                    radio=True,
+                ),
+            ),
+        ),
         pystray.MenuItem("Quit", quit_app),
     )
 
@@ -78,6 +119,34 @@ def create_menu(name, battery_level, last_update, battery_charging):
 # Function to load the images
 def load_image(image_name):
     return Image.open(f"{image_directory}{image_name}.png")
+
+
+def get_icon_text_font(draw, text):
+    digit_count = len(text)
+    if digit_count == 1:
+        max_font_size = 104
+        min_padding = 10
+    elif digit_count == 2:
+        max_font_size = 76
+        min_padding = 6
+    else:
+        max_font_size = 52
+        min_padding = 5
+
+    for font_size in range(max_font_size, 11, -2):
+        font = ImageFont.load_default(size=font_size)
+        left, top, right, bottom = draw.textbbox(
+            (50, 50), text, font=font, anchor="mm"
+        )
+        if (
+            left >= min_padding
+            and top >= min_padding
+            and right <= 100 - min_padding
+            and bottom <= 100 - min_padding
+        ):
+            return font
+
+    return ImageFont.load_default(size=36)
 
 
 # Function to get the battery data
@@ -131,7 +200,7 @@ def get_battery(event: threading.Event):
 
 # Create the battery icon based on the battery level and charging status
 def create_battery_icon():
-    global battery_level, battery_charging
+    global battery_level, battery_charging, display_mode
     image = Image.new("RGB", (100, 100), color="white")
     draw = ImageDraw.Draw(image)
 
@@ -144,14 +213,26 @@ def create_battery_icon():
 
     if battery_level is not None:
         if battery_charging:
-            draw_battery_indicator("orange", battery_level)
+            color = "orange"
+        elif battery_level < 20:
+            color = "red"
+        elif battery_level < 50:
+            color = "yellow"
         else:
-            if battery_level < 20:
-                draw_battery_indicator("red", battery_level)
-            elif battery_level < 50:
-                draw_battery_indicator("yellow", battery_level)
-            else:
-                draw_battery_indicator("green", battery_level)
+            color = "green"
+
+        if display_mode == "icon":
+            text = str(battery_level)
+            font = get_icon_text_font(draw, text)
+            draw.text(
+                (50, 50),
+                text,
+                fill=color,
+                font=font,
+                anchor="mm",
+            )
+        else:
+            draw_battery_indicator(color, battery_level)
     else:
         error = load_image("error")
 
@@ -200,6 +281,17 @@ def set_time_delta(icon, item):
     event.set()
 
 
+def set_display_mode(icon, item):
+    global event, display_mode
+    display_mode = "icon" if item.text == "Show percentage on icon" else "hover"
+    save_display_mode()
+    if icon is not None:
+        icon.icon = create_battery_icon()
+        icon.update_menu()
+    if event is not None:
+        event.set()
+
+
 # This function is called when you click on the quit button
 def quit_app(icon, item):
     global stopped
@@ -211,6 +303,7 @@ def quit_app(icon, item):
 def main():
     global icon, event, image
 
+    load_display_mode()
     event = threading.Event()
     image = create_battery_icon()
     icon = pystray.Icon("Battery", icon=image, title="Battery: N/A")
