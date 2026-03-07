@@ -22,7 +22,7 @@ This is a handy Windows application that retrieves the battery level of your Ste
 
 ## Usage
 
-Once the application is started, you can hover over the icon to see the battery level. Right-clicking allows you to exit the application or view the battery level again.
+Once the application is started, you can hover over the icon to see the battery level. If you prefer, right-click the tray icon and switch **Tray battery display** to **Show percentage on icon** to display the number directly on the system tray icon. You can switch back to hover-only at any time.
 
 ## Our Tested/Working Devices
 
