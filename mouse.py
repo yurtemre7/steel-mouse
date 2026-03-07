@@ -195,7 +195,7 @@ def create_battery_icon():
 
         if display_mode == "icon":
             text = str(battery_level)
-            font_size = 72 if len(text) <= 2 else 52
+            font_size = 72 if len(text) <= 2 else 56
             font = ImageFont.load_default(size=font_size)
             text_bbox = draw.textbbox((0, 0), text, font=font)
             text_width = text_bbox[2] - text_bbox[0]
@@ -207,8 +207,6 @@ def create_battery_icon():
                 text,
                 fill=color,
                 font=font,
-                stroke_width=2,
-                stroke_fill="black",
             )
         else:
             draw_battery_indicator(color, battery_level)
