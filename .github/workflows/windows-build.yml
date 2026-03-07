@@ -3,12 +3,15 @@ name: Build Windows App
 on:
   workflow_dispatch:
   push:
+    branches:
+      - "main"
     paths:
-      - "mouse.py"
-      - "requirements.txt"
       - "innosetup/setup.iss"
-      - "images/"
-      - ".github/workflows/windows-build.yml"
+  pull_request:
+    branches:
+      - "main"
+    paths:
+      - "innosetup/setup.iss"
 
 jobs:
   build:
