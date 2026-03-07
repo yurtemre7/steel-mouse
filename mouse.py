@@ -1,6 +1,7 @@
 # Import the essential modules
 import rivalcfg, pystray, os, time, threading
 from PIL import Image, ImageDraw, ImageFont
+from mock_mouse import MockMouse
 
 # Our state variables
 last_update = None
@@ -22,6 +23,8 @@ display_mode = display_mode_default
 
 directory = f"{os.path.dirname(os.path.realpath(__file__))}/"
 image_directory = f"{directory}images/"
+
+mock = False # This is for debugging purposes, if you don't have a steel series mouse at hand but still want to test the program.
 
 
 # Function to load the time delta from a file
@@ -151,11 +154,14 @@ def get_icon_text_font(draw, text):
 
 # Function to get the battery data
 def get_battery(event: threading.Event):
-    global stopped, icon, battery_level, last_update, battery_charging
+    global stopped, icon, battery_level, last_update, battery_charging, mock
     mouse = None
     while not stopped:
         try:
-            mouse = rivalcfg.get_first_mouse()
+            if mock:
+                mouse = MockMouse("Emre Mock", level=95)
+            else:
+                mouse = rivalcfg.get_first_mouse()
             print(f"Mouse found {mouse}")
             if mouse is None:
                 print("No mouse found")
