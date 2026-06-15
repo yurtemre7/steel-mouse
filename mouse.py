@@ -245,13 +245,13 @@ def create_battery_icon():
     image.paste(error, (0, 0), error)
 
     image = image.convert("RGBA")
-    data = image.getdata()
+    data = image.get_flattened_data()
     if data is None:
         print("No data found in image, returning empty image.")
         return image
     new_data = []
     for item in data:
-        if item[0] == 0 and item[1] == 0 and item[2] == 0:
+        if isinstance(item, tuple) and item[0] == 0 and item[1] == 0 and item[2] == 0:
             new_data.append((255, 255, 255, 0))
         else:
             new_data.append(item)
