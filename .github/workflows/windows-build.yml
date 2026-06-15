@@ -7,11 +7,6 @@ on:
       - "main"
     paths:
       - "innosetup/setup.iss"
-  pull_request:
-    branches:
-      - "main"
-    paths:
-      - "innosetup/setup.iss"
 
 jobs:
   build:
