@@ -13,10 +13,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -51,22 +51,14 @@ jobs:
 
       - name: Create GitHub release
         id: create_release
-        uses: actions/create-release@v1.1.4
+        uses: softprops/action-gh-release@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ env.APP_VERSION }}
-          release_name: v${{ env.APP_VERSION }}
           body: Generated Release for SteelMouse v${{ env.APP_VERSION }} by Github Actions.
+          generate_release_notes: true
           draft: false
           prerelease: false
-
-      - name: Upload installer to release
-        uses: actions/upload-release-asset@v1.0.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: 'D:\a\steel-mouse\steel-mouse\innosetup\SteelMouse_Setup.exe'
-          asset_name: SteelMouse_Setup-${{ env.APP_VERSION }}.exe
-          asset_content_type: application/octet-stream
+          files: |
+            D:\a\steel-mouse\steel-mouse\innosetup\SteelMouse_Setup.exe
