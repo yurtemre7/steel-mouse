@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steel Mouse - Settings</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="brand">Steel Mouse</a>
+    <a href="/" data-i18n="nav_devices">Cihazlar</a>
+    <a href="/history" data-i18n="nav_history">Geçmiş</a>
+    <a href="/settings" class="active" data-i18n="nav_settings">Ayarlar</a>
+  </nav>
+
+  <div class="container">
+    <h1 data-i18n="title_settings">Ayarlar</h1>
+
+    <div class="settings-form">
+      <div class="form-group">
+        <label for="language" data-i18n="label_language">Dil</label>
+        <select id="language">
+          <option value="tr">Türkçe</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="time_delta" data-i18n="label_interval">Güncelleme Aralığı (saniye)</label>
+        <input type="number" id="time_delta" min="10" max="7200" step="10">
+      </div>
+
+      <div class="form-group">
+        <label for="display_mode" data-i18n="label_display">Simge Görünümü</label>
+        <select id="display_mode">
+          <option value="hover" data-i18n="opt_hover">Üzerine gelince göster</option>
+          <option value="icon" data-i18n="opt_icon">Simgede göster</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="api_port" data-i18n="label_api_port">API Port</label>
+        <input type="number" id="api_port" min="1024" max="65535">
+      </div>
+
+      <button class="btn" id="saveBtn" data-i18n="btn_save">Kaydet</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <div class="i18n-data" style="display:none" data-tr="{{ lang == 'tr' }}"></div>
+
+  <script>
+  const I18N = {
+    tr: {
+      nav_devices: "Cihazlar",
+      nav_history: "Geçmiş",
+      nav_settings: "Ayarlar",
+      title_settings: "Ayarlar",
+      label_language: "Dil",
+      label_interval: "Güncelleme Aralığı (saniye)",
+      label_display: "Simge Görünümü",
+      label_api_port: "API Port",
+      opt_hover: "Üzerine gelince göster",
+      opt_icon: "Simgede göster",
+      btn_save: "Kaydet",
+      saved: "Kaydedildi!",
+      error: "Hata oluştu"
+    },
+    en: {
+      nav_devices: "Devices",
+      nav_history: "History",
+      nav_settings: "Settings",
+      title_settings: "Settings",
+      label_language: "Language",
+      label_interval: "Update Interval (seconds)",
+      label_display: "Tray Display",
+      label_api_port: "API Port",
+      opt_hover: "Show on hover",
+      opt_icon: "Show on icon",
+      btn_save: "Save",
+      saved: "Saved!",
+      error: "An error occurred"
+    }
+  };
+
+  const LANG = document.querySelector('.i18n-data').dataset.tr === 'true' ? 'tr' : 'en';
+  const t = (key) => I18N[LANG][key] || key;
+
+  function showToast(msg, isError) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.style.background = isError ? '#ef4444' : '#22c55e';
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+
+  async function loadSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      document.getElementById('language').value = data.language || 'tr';
+      document.getElementById('time_delta').value = data.time_delta || 300;
+      document.getElementById('display_mode').value = data.display_mode || 'hover';
+      document.getElementById('api_port').value = data.api_port || 5000;
+    } catch(e) {
+      console.error(e);
+    }
+  }
+
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const data = {
+      language: document.getElementById('language').value,
+      time_delta: parseInt(document.getElementById('time_delta').value),
+      display_mode: document.getElementById('display_mode').value,
+      api_port: parseInt(document.getElementById('api_port').value)
+    };
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (res.ok) {
+        showToast(t('saved'), false);
+        setTimeout(() => location.reload(), 500);
+      } else {
+        showToast(t('error'), true);
+      }
+    } catch(e) {
+      showToast(t('error'), true);
+    }
+  });
+
+  loadSettings();
+  </script>
+</body>
+</html>

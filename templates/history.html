@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steel Mouse - Battery History</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <nav>
+    <a href="/" class="brand">Steel Mouse</a>
+    <a href="/" data-i18n="nav_devices">Cihazlar</a>
+    <a href="/history" class="active" data-i18n="nav_history">Geçmiş</a>
+    <a href="/settings" data-i18n="nav_settings">Ayarlar</a>
+  </nav>
+
+  <div class="container">
+    <h1 data-i18n="title_history">Batarya Geçmişi</h1>
+
+    <div class="controls">
+      <select id="deviceSelect">
+        <option value="" data-i18n="all_devices">Tüm Cihazlar</option>
+      </select>
+      <select id="rangeSelect">
+        <option value="1">1 Gün</option>
+        <option value="3">3 Gün</option>
+        <option value="7" selected>7 Gün</option>
+        <option value="14">14 Gün</option>
+        <option value="30">30 Gün</option>
+      </select>
+    </div>
+
+    <div class="chart-container">
+      <canvas id="batteryChart"></canvas>
+    </div>
+
+    <div id="noData" class="empty-state" style="display:none;" data-i18n="no_history">Geçmiş verisi bulunamadı</div>
+  </div>
+
+  <div class="i18n-data" style="display:none" data-tr="{{ lang == 'tr' }}"></div>
+
+  <script>
+  const I18N = {
+    tr: {
+      nav_devices: "Cihazlar",
+      nav_history: "Geçmiş",
+      nav_settings: "Ayarlar",
+      title_history: "Batarya Geçmişi",
+      all_devices: "Tüm Cihazlar",
+      no_history: "Geçmiş verisi bulunamadı",
+      battery_level: "Batarya Seviyesi",
+      charging: "Şarj Oluyor"
+    },
+    en: {
+      nav_devices: "Devices",
+      nav_history: "History",
+      nav_settings: "Settings",
+      title_history: "Battery History",
+      all_devices: "All Devices",
+      no_history: "No history data found",
+      battery_level: "Battery Level",
+      charging: "Charging"
+    }
+  };
+
+  const LANG = document.querySelector('.i18n-data').dataset.tr === 'true' ? 'tr' : 'en';
+  const t = (key) => I18N[LANG][key] || key;
+
+  let chart = null;
+
+  function initChart() {
+    const ctx = document.getElementById('batteryChart').getContext('2d');
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 2.5,
+        interaction: { intersect: false, mode: 'index' },
+        plugins: {
+          legend: { labels: { color: '#94a3b8', font: { size: 12 } } },
+          tooltip: { backgroundColor: '#1e293b', titleColor: '#f1f5f9', bodyColor: '#94a3b8', borderColor: '#334155', borderWidth: 1 }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#64748b', maxTicksLimit: 12 },
+            grid: { color: '#1e293b' }
+          },
+          y: {
+            min: 0, max: 100,
+            ticks: { color: '#64748b', callback: v => v + '%' },
+            grid: { color: '#1e293b' }
+          }
+        }
+      }
+    });
+  }
+
+  async function loadDevices() {
+    const res = await fetch('/api/devices/all');
+    const data = await res.json();
+    const select = document.getElementById('deviceSelect');
+    const currentVal = select.value;
+    select.innerHTML = `<option value="">${t('all_devices')}</option>`;
+    for (const [id, info] of Object.entries(data)) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = info.name;
+      select.appendChild(opt);
+    }
+    if (currentVal) select.value = currentVal;
+  }
+
+  async function loadHistory() {
+    const deviceId = document.getElementById('deviceSelect').value;
+    const days = parseInt(document.getElementById('rangeSelect').value);
+    const noData = document.getElementById('noData');
+
+    if (!deviceId) {
+      const res = await fetch('/api/devices/all');
+      const data = await res.json();
+      const datasets = [];
+      const allTimestamps = new Set();
+
+      for (const [id, info] of Object.entries(data)) {
+        const filtered = info.history.filter(r => r.timestamp > (Date.now()/1000) - days*86400);
+        filtered.forEach(r => allTimestamps.add(r.timestamp));
+      }
+
+      const labels = [...allTimestamps].sort().map(ts => {
+        const d = new Date(ts * 1000);
+        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      });
+
+      const colors = ['#3b82f6','#22c55e','#eab308','#ef4444','#a855f7','#f97316','#06b6d4'];
+      let ci = 0;
+
+      for (const [id, info] of Object.entries(data)) {
+        const filtered = info.history.filter(r => r.timestamp > (Date.now()/1000) - days*86400);
+        const mapped = filtered.map(r => ({ x: r.timestamp, y: r.level }));
+        datasets.push({
+          label: info.name,
+          data: mapped,
+          borderColor: colors[ci % colors.length],
+          backgroundColor: colors[ci % colors.length] + '33',
+          tension: 0.3,
+          pointRadius: 2,
+          fill: false
+        });
+        ci++;
+      }
+
+      chart.data.labels = labels;
+      chart.data.datasets = datasets;
+      chart.options.scales.x.type = 'category';
+      chart.update();
+      noData.style.display = datasets.length === 0 ? 'block' : 'none';
+      return;
+    }
+
+    const res = await fetch(`/api/history/${encodeURIComponent(deviceId)}?days=${days}&limit=1000`);
+    const data = await res.json();
+    const history = data.history || [];
+
+    if (history.length === 0) {
+      chart.data.labels = [];
+      chart.data.datasets = [];
+      chart.update();
+      noData.style.display = 'block';
+      return;
+    }
+
+    noData.style.display = 'none';
+
+    const labels = history.map(r => {
+      const d = new Date(r.timestamp * 1000);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    });
+
+    chart.data.labels = labels;
+    chart.data.datasets = [{
+      label: t('battery_level'),
+      data: history.map(r => r.level),
+      borderColor: '#3b82f6',
+      backgroundColor: 'rgba(59,130,246,0.1)',
+      tension: 0.3,
+      pointRadius: 3,
+      fill: true
+    }];
+    chart.update();
+  }
+
+  initChart();
+  loadDevices().then(loadHistory);
+  document.getElementById('deviceSelect').addEventListener('change', loadHistory);
+  document.getElementById('rangeSelect').addEventListener('change', loadHistory);
+  </script>
+</body>
+</html>

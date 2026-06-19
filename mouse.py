@@ -8,6 +8,7 @@ import config as cfg
 import mqtt_client
 import database
 import auto_start
+import alerts
 
 last_update = None
 battery_level = None
@@ -352,6 +353,7 @@ def get_battery(event: threading.Event):
                     "type": device_type,
                 }
                 database.save_battery(device_id, name, level, is_charging)
+                alerts.check_battery_level(device_id, name, level, is_charging)
 
             devices = new_devices
 

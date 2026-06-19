@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steel Mouse Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/" class="brand">Steel Mouse</a>
+    <a href="/" class="active" data-i18n="nav_devices">Cihazlar</a>
+    <a href="/history" data-i18n="nav_history">Geçmiş</a>
+    <a href="/settings" data-i18n="nav_settings">Ayarlar</a>
+  </nav>
+
+  <div class="container">
+    <h1 data-i18n="title_devices">Bağlı Cihazlar</h1>
+    <div id="devices" class="card-grid"></div>
+    <div id="empty" class="empty-state" style="display:none;" data-i18n="no_devices">Cihaz bulunamadı</div>
+  </div>
+
+  <div class="i18n-data" style="display:none" data-tr="{{ lang == 'tr' }}"></div>
+
+  <script>
+  const I18N = {
+    tr: {
+      nav_devices: "Cihazlar",
+      nav_history: "Geçmiş",
+      nav_settings: "Ayarlar",
+      title_devices: "Bağlı Cihazlar",
+      no_devices: "Cihaz bulunamadı",
+      charging: "Şarj Oluyor",
+      remaining: "kalan",
+      view_history: "Geçmişi Gör",
+      no_data: "Veri yok"
+    },
+    en: {
+      nav_devices: "Devices",
+      nav_history: "History",
+      nav_settings: "Settings",
+      title_devices: "Connected Devices",
+      no_devices: "No devices found",
+      charging: "Charging",
+      remaining: "remaining",
+      view_history: "View History",
+      no_data: "No data"
+    }
+  };
+
+  const LANG = document.querySelector('.i18n-data').dataset.tr === 'true' ? 'tr' : 'en';
+  const t = (key) => I18N[LANG][key] || key;
+
+  function batteryColor(level, charging) {
+    if (charging) return 'orange';
+    if (level < 20) return 'red';
+    if (level < 50) return 'yellow';
+    return 'green';
+  }
+
+  function badgeClass(level, charging, is_active) {
+    if (!is_active) return 'badge-inactive';
+    if (charging) return 'badge-charging';
+    if (level < 20) return 'badge-critical';
+    if (level < 50) return 'badge-low';
+    return 'badge-ok';
+  }
+
+  function badgeText(level, charging, is_active) {
+    if (!is_active) return '—';
+    if (charging) return t('charging');
+    return level + '%';
+  }
+
+  function renderDevices(data) {
+    const container = document.getElementById('devices');
+    const empty = document.getElementById('empty');
+    const devices = data.devices || [];
+
+    if (devices.length === 0) {
+      container.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+
+    empty.style.display = 'none';
+    container.innerHTML = devices.map(d => {
+      const level = d.battery_level;
+      const charging = d.is_charging;
+      const color = batteryColor(level, charging);
+      const displayLevel = level != null ? level + '%' : 'N/A';
+      const remaining = d.remaining_time != null ? d.remaining_time : null;
+      let metaRight = '';
+      if (charging) metaRight = t('charging');
+      else if (remaining != null) metaRight = remaining + ' ' + t('remaining');
+      else metaRight = t('no_data');
+
+      return `
+        <div class="card">
+          <div class="card-header">
+            <span class="device-name">${d.name}</span>
+            <span class="badge ${badgeClass(level, charging, d.is_active)}">${badgeText(level, charging, d.is_active)}</span>
+          </div>
+          <div class="battery-bar-container">
+            <div class="battery-bar ${color}" style="width: ${level != null ? level : 0}%"></div>
+            <span class="battery-text">${displayLevel}</span>
+          </div>
+          <div class="card-meta">
+            <span>${d.type || 'mouse'}</span>
+            <span>${metaRight}</span>
+          </div>
+          <a class="card-link" href="/history?device=${encodeURIComponent(d.id)}">${t('view_history')} →</a>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function fetchDevices() {
+    try {
+      const res = await fetch('/api/devices');
+      const data = await res.json();
+      renderDevices(data);
+    } catch(e) {
+      console.error(e);
+    }
+  }
+
+  fetchDevices();
+  setInterval(fetchDevices, 5000);
+  </script>
+</body>
+</html>

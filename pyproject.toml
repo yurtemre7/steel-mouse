@@ -10,8 +10,10 @@ dependencies = [
     "hidapi>=0.15.0",
     "paho-mqtt>=2.0.0",
     "pillow>=12.2.0",
+    "pyinstaller>=6.0.0",
     "pystray>=0.19.5",
     "rivalcfg>=4.17.0",
     "setuptools>=82.0.1",
     "six>=1.17.0",
+    "win10toast>=0.9",
 ]
