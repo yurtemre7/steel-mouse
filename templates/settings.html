@@ -44,6 +44,11 @@
         <input type="number" id="api_port" min="1024" max="65535">
       </div>
 
+      <div class="form-group">
+        <label for="design_capacity" data-i18n="label_design_capacity">Tasarım Kapasitesi (mAh)</label>
+        <input type="number" id="design_capacity" min="1" max="10000">
+      </div>
+
       <button class="btn" id="saveBtn" data-i18n="btn_save">Kaydet</button>
     </div>
   </div>
@@ -63,6 +68,7 @@
       label_interval: "Güncelleme Aralığı (saniye)",
       label_display: "Simge Görünümü",
       label_api_port: "API Port",
+      label_design_capacity: "Tasarım Kapasitesi (mAh)",
       opt_hover: "Üzerine gelince göster",
       opt_icon: "Simgede göster",
       btn_save: "Kaydet",
@@ -78,6 +84,7 @@
       label_interval: "Update Interval (seconds)",
       label_display: "Tray Display",
       label_api_port: "API Port",
+      label_design_capacity: "Design Capacity (mAh)",
       opt_hover: "Show on hover",
       opt_icon: "Show on icon",
       btn_save: "Save",
@@ -105,6 +112,7 @@
       document.getElementById('time_delta').value = data.time_delta || 300;
       document.getElementById('display_mode').value = data.display_mode || 'hover';
       document.getElementById('api_port').value = data.api_port || 5000;
+      document.getElementById('design_capacity').value = data.design_capacity || 250;
     } catch(e) {
       console.error(e);
     }
@@ -115,7 +123,8 @@
       language: document.getElementById('language').value,
       time_delta: parseInt(document.getElementById('time_delta').value),
       display_mode: document.getElementById('display_mode').value,
-      api_port: parseInt(document.getElementById('api_port').value)
+      api_port: parseInt(document.getElementById('api_port').value),
+      design_capacity: parseInt(document.getElementById('design_capacity').value)
     };
     try {
       const res = await fetch('/api/settings', {

@@ -32,6 +32,7 @@
       no_devices: "Cihaz bulunamadı",
       charging: "Şarj Oluyor",
       remaining: "kalan",
+      mah: "mAh",
       view_history: "Geçmişi Gör",
       no_data: "Veri yok"
     },
@@ -43,6 +44,7 @@
       no_devices: "No devices found",
       charging: "Charging",
       remaining: "remaining",
+      mah: "mAh",
       view_history: "View History",
       no_data: "No data"
     }
@@ -92,7 +94,7 @@
       const remaining = d.remaining_time != null ? d.remaining_time : null;
       let metaRight = '';
       if (charging) metaRight = t('charging');
-      else if (remaining != null) metaRight = remaining + ' ' + t('remaining');
+      else if (d.remaining_time_str) metaRight = d.remaining_time_str;
       else metaRight = t('no_data');
 
       return `

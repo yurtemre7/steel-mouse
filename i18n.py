@@ -40,6 +40,8 @@ TRANSLATIONS = {
         "on": "Açık",
         "off": "Kapalı",
         "auto_start": "Otomatik Başlat",
+        "design_capacity": "Tasarım Kapasitesi",
+        "mah": "mAh",
     },
     "en": {
         "battery": "Battery",
@@ -80,6 +82,8 @@ TRANSLATIONS = {
         "on": "On",
         "off": "Off",
         "auto_start": "Auto Start",
+        "design_capacity": "Design Capacity",
+        "mah": "mAh",
     },
 }
 

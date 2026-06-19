@@ -4,7 +4,7 @@
   "language": "tr",
   "api_port": 5000,
   "api_enabled": true,
-  "mock": true,
+  "mock": false,
   "mqtt_enabled": false,
   "mqtt_broker": "localhost",
   "mqtt_port": 1883,
@@ -14,5 +14,6 @@
   "mqtt_discovery": true,
   "dashboard_enabled": true,
   "dashboard_port": 8080,
-  "auto_start": false
+  "auto_start": false,
+  "design_capacity": 250
 }

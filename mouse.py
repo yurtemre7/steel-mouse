@@ -288,6 +288,23 @@ def _scan_keyboards():
     return found
 
 
+def read_raw_battery(device_path, command, read_length=64):
+    try:
+        dev = hid_lib.device()
+        dev.open_path(device_path)
+        dev.write(command)
+        time.sleep(0.05)
+        data = dev.read(read_length, timeout_ms=200)
+        dev.close()
+        return list(data) if data else []
+    except Exception:
+        try:
+            dev.close()
+        except Exception:
+            pass
+        return []
+
+
 def get_battery(event: threading.Event):
     global stopped, icon, battery_level, last_update, battery_charging, mock, mouse_name, active_device_id, devices
     mock = cfg.get("mock", False)
@@ -605,11 +622,12 @@ def get_settings():
         "language": cfg.get("language", "tr"),
         "api_port": cfg.get("api_port", 5000),
         "api_enabled": cfg.get("api_enabled", False),
+        "design_capacity": cfg.get("design_capacity", 250),
     }
 
 
 def update_settings(data):
-    allowed = ["time_delta", "display_mode", "language"]
+    allowed = ["time_delta", "display_mode", "language", "design_capacity"]
     updated = {}
     for key in allowed:
         if key in data:
@@ -635,6 +653,7 @@ def get_devices():
             "is_charging": dev_data["is_charging"],
             "type": dev_data["type"],
             "remaining_time": remaining,
+            "remaining_time_str": i18n.format_remaining_time(remaining),
             "is_active": dev_id == active_device_id,
         })
     return {"devices": result}
@@ -648,6 +667,8 @@ def start_web_api():
 
 
 def start_dashboard():
+    import hosts_manager
+    hosts_manager.add_domain()
     from web_dashboard import init_dashboard, start_dashboard as _start
     port = cfg.get("dashboard_port", 8080)
     init_dashboard(get_battery_data, get_settings, update_settings, get_devices)

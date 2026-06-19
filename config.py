@@ -28,6 +28,7 @@ DEFAULT_CONFIG = {
     "dashboard_enabled": False,
     "dashboard_port": 8080,
     "auto_start": False,
+    "design_capacity": 250,
 }
 
 _config = None

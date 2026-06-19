@@ -159,6 +159,12 @@ h1 {
 
 .card-link:hover { text-decoration: underline; }
 
+.card-health {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
 .controls {
   display: flex;
   gap: 1rem;
