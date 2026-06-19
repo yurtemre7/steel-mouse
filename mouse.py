@@ -5,6 +5,7 @@ from battery_estimator import BatteryEstimator
 import i18n
 import config as cfg
 import mqtt_client
+import database
 
 last_update = None
 battery_level = None
@@ -17,6 +18,10 @@ mock = False
 
 estimator = BatteryEstimator()
 mouse_name = None
+
+devices = {}
+active_device_id = None
+mouse_objects = {}
 
 time_error_retry = 1 / 20
 time_error = 60 * 0.2
@@ -50,14 +55,39 @@ def create_menu():
     mqtt_enabled = cfg.get("mqtt_enabled", False)
     lang = i18n.get_lang()
 
-    return pystray.Menu(
+    menu_items = []
+
+    if len(devices) > 1:
+        device_menu_items = []
+        for dev_id, dev_data in devices.items():
+            device_menu_items.append(
+                pystray.MenuItem(
+                    text=f"{dev_data['name']} ({dev_data['level']}%)" if dev_data['level'] is not None else dev_data['name'],
+                    action=set_active_device,
+                    checked=lambda dev_id=dev_id: dev_id == active_device_id,
+                    default=(dev_id == active_device_id),
+                    radio=True,
+                )
+            )
+        menu_items.append(
+            pystray.MenuItem(
+                text=i18n.t("select_device"),
+                action=pystray.Menu(*device_menu_items),
+            )
+        )
+
+    active_dev = devices.get(active_device_id, {}) if active_device_id else {}
+    display_name = active_dev.get('name', mouse_name) or 'N/A'
+    display_level = active_dev.get('level', battery_level)
+
+    menu_items.extend([
         pystray.MenuItem(
-            f"{i18n.t('name')}: {mouse_name or 'N/A'}",
+            f"{i18n.t('name')}: {display_name}",
             lambda: None,
             radio=False,
         ),
         pystray.MenuItem(
-            f"{i18n.t('battery')}: {str(f'{battery_level}%' if battery_level is not None else 'N/A')}",
+            f"{i18n.t('battery')}: {str(f'{display_level}%' if display_level is not None else 'N/A')}",
             lambda: None,
         ),
         pystray.MenuItem(
@@ -138,7 +168,9 @@ def create_menu():
             checked=lambda *_: mqtt_enabled,
         ),
         pystray.MenuItem(i18n.t("quit"), quit_app),
-    )
+    ])
+
+    return pystray.Menu(*menu_items)
 
 
 def load_image(image_name):
@@ -174,37 +206,63 @@ def get_icon_text_font(draw, text):
 
 
 def get_battery(event: threading.Event):
-    global stopped, icon, battery_level, last_update, battery_charging, mock, mouse_name
+    global stopped, icon, battery_level, last_update, battery_charging, mock, mouse_name, active_device_id, devices
     mock = cfg.get("mock", False)
-    mouse = None
     while not stopped:
         try:
+            found_mice = []
             if mock:
-                mouse = MockMouse("Fatih Gülcü", level=95)
+                found_mice = [MockMouse("Fatih Gülcü", level=95)]
             else:
-                mouse = rivalcfg.get_first_mouse()
-            print(f"Mouse found {mouse}")
-            if mouse is None:
+                plugged_devices = list(rivalcfg.devices.list_plugged_devices())
+                for dev in plugged_devices:
+                    try:
+                        mouse = rivalcfg.mouse.get_mouse(
+                            vendor_id=dev["vendor_id"],
+                            product_id=dev["product_id"],
+                        )
+                        found_mice.append(mouse)
+                    except Exception:
+                        continue
+
+            if not found_mice:
                 print("No mouse found")
                 time.sleep(time_error_retry)
                 raise Exception
 
-            battery = mouse.battery
-            print(f"Mouse battery {battery}")
+            new_devices = {}
+            for mouse in found_mice:
+                device_id = f"{getattr(mouse, 'product_id', 0)}_{mouse.name}"
+                battery = mouse.battery
+                if battery is not None and battery["level"] is not None:
+                    level = max(min(battery["level"], 100), 0)
+                    is_charging = battery["is_charging"]
+                    new_devices[device_id] = {
+                        "name": mouse.name,
+                        "level": level,
+                        "is_charging": is_charging,
+                        "type": "mouse",
+                    }
+                    database.save_battery(device_id, mouse.name, level, is_charging)
 
-            if battery is not None:
-                mouse_name = mouse.name
-                if battery["level"] is not None:
-                    battery_level = max(min(battery["level"], 100), 0)
-                    last_update = time.time()
-                    battery_charging = battery["is_charging"]
+            devices = new_devices
 
-                    if not battery_charging:
-                        estimator.add_sample(battery_level)
-                    else:
-                        estimator.reset()
+            if active_device_id not in devices:
+                active_device_id = next(iter(devices), None)
 
-                    mqtt_client.publish_battery_data()
+            if active_device_id and active_device_id in devices:
+                active = devices[active_device_id]
+                mouse_name = active["name"]
+                battery_level = active["level"]
+                battery_charging = active["is_charging"]
+                last_update = time.time()
+
+                if not battery_charging:
+                    estimator.add_sample(battery_level)
+                else:
+                    estimator.reset()
+
+                mqtt_client.publish_battery_data()
 
                 if icon is not None:
                     icon.icon = create_battery_icon()
@@ -219,9 +277,7 @@ def get_battery(event: threading.Event):
                     icon.update_menu()
 
                 interval = cfg.get("time_delta", 300)
-                sleeptime = (
-                    interval if battery["level"] is not None else time_error_retry
-                )
+                sleeptime = interval if battery_level is not None else time_error_retry
                 event.clear()
                 event.wait(timeout=sleeptime)
             else:
@@ -231,8 +287,11 @@ def get_battery(event: threading.Event):
             print(f"Error: {e}\n\nSleeping for {time_error} seconds...")
             time.sleep(time_error)
 
-    if mouse is not None:
-        mouse.close()
+    for mouse in mouse_objects.values():
+        try:
+            mouse.close()
+        except Exception:
+            pass
     print("Stopping thread")
 
 
@@ -298,6 +357,25 @@ def refresh_connection():
         print("Event is None, cannot refresh connection.")
         return
     event.set()
+
+
+def set_active_device(icon, item):
+    global active_device_id, battery_level, battery_charging, mouse_name, last_update
+    for dev_id, dev_data in devices.items():
+        if dev_data['name'] in item.text:
+            active_device_id = dev_id
+            mouse_name = dev_data['name']
+            battery_level = dev_data['level']
+            battery_charging = dev_data['is_charging']
+            last_update = time.time()
+            cfg.set("active_device_id", active_device_id)
+            if icon is not None:
+                icon.icon = create_battery_icon()
+                icon.menu = create_menu()
+                icon.update_menu()
+            if event is not None:
+                event.set()
+            break
 
 
 def set_time_delta(icon, item):
@@ -399,16 +477,21 @@ def update_settings(data):
 
 
 def get_devices():
-    devices = []
-    if mouse_name is not None:
-        remaining = estimator.get_remaining_seconds()
-        devices.append({
-            "name": mouse_name,
-            "battery_level": battery_level,
-            "is_charging": battery_charging,
+    result = []
+    for dev_id, dev_data in devices.items():
+        remaining = None
+        if dev_id == active_device_id:
+            remaining = estimator.get_remaining_seconds()
+        result.append({
+            "id": dev_id,
+            "name": dev_data["name"],
+            "battery_level": dev_data["level"],
+            "is_charging": dev_data["is_charging"],
+            "type": dev_data["type"],
             "remaining_time": remaining,
+            "is_active": dev_id == active_device_id,
         })
-    return {"devices": devices}
+    return {"devices": result}
 
 
 def start_web_api():
@@ -435,6 +518,7 @@ def main():
     global icon, event, image
 
     load_config()
+    database.init_db()
     event = threading.Event()
     image = create_battery_icon()
     icon = pystray.Icon("Battery", icon=image, title=i18n.t("title_no_data"))
