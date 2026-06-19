@@ -1,0 +1,15 @@
+{
+  "time_delta": 300,
+  "display_mode": "hover",
+  "language": "tr",
+  "api_port": 5000,
+  "api_enabled": true,
+  "mock": false,
+  "mqtt_enabled": false,
+  "mqtt_broker": "localhost",
+  "mqtt_port": 1883,
+  "mqtt_topic_prefix": "steelmouse",
+  "mqtt_username": "",
+  "mqtt_password": "",
+  "mqtt_discovery": true
+}

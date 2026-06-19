@@ -8,6 +8,7 @@ dependencies = [
     "flask>=3.0.0",
     "flask-cors>=4.0.0",
     "hidapi>=0.15.0",
+    "paho-mqtt>=2.0.0",
     "pillow>=12.2.0",
     "pystray>=0.19.5",
     "rivalcfg>=4.17.0",

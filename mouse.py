@@ -4,6 +4,7 @@ from mock_mouse import MockMouse
 from battery_estimator import BatteryEstimator
 import i18n
 import config as cfg
+import mqtt_client
 
 last_update = None
 battery_level = None
@@ -46,6 +47,7 @@ def create_menu():
     remaining_str = i18n.format_remaining_time(remaining)
     interval = cfg.get("time_delta", 300)
     api_enabled = cfg.get("api_enabled", False)
+    mqtt_enabled = cfg.get("mqtt_enabled", False)
     lang = i18n.get_lang()
 
     return pystray.Menu(
@@ -130,6 +132,11 @@ def create_menu():
             toggle_api,
             checked=lambda *_: api_enabled,
         ),
+        pystray.MenuItem(
+            f"MQTT: {i18n.t('on') if mqtt_enabled else i18n.t('off')} ({cfg.get('mqtt_broker', 'localhost')}:{cfg.get('mqtt_port', 1883)})",
+            toggle_mqtt,
+            checked=lambda *_: mqtt_enabled,
+        ),
         pystray.MenuItem(i18n.t("quit"), quit_app),
     )
 
@@ -196,6 +203,8 @@ def get_battery(event: threading.Event):
                         estimator.add_sample(battery_level)
                     else:
                         estimator.reset()
+
+                    mqtt_client.publish_battery_data()
 
                 if icon is not None:
                     icon.icon = create_battery_icon()
@@ -334,8 +343,21 @@ def toggle_api(icon, item):
         icon.update_menu()
 
 
+def toggle_mqtt(icon, item):
+    enabled = not cfg.get("mqtt_enabled", False)
+    cfg.set("mqtt_enabled", enabled)
+    if enabled:
+        start_mqtt_client()
+    else:
+        mqtt_client.stop_mqtt()
+    if icon is not None:
+        icon.menu = create_menu()
+        icon.update_menu()
+
+
 def quit_app(icon, item):
     global stopped
+    mqtt_client.stop_mqtt()
     icon.stop()
     stopped = True
 
@@ -396,6 +418,19 @@ def start_web_api():
     start_api_server(port)
 
 
+def start_mqtt_client():
+    mqtt_config = {
+        "mqtt_broker": cfg.get("mqtt_broker", "localhost"),
+        "mqtt_port": cfg.get("mqtt_port", 1883),
+        "mqtt_topic_prefix": cfg.get("mqtt_topic_prefix", "steelmouse"),
+        "mqtt_username": cfg.get("mqtt_username", ""),
+        "mqtt_password": cfg.get("mqtt_password", ""),
+        "mqtt_discovery": cfg.get("mqtt_discovery", True),
+    }
+    mqtt_client.init_mqtt(get_battery_data, mqtt_config)
+    mqtt_client.start_mqtt()
+
+
 def main():
     global icon, event, image
 
@@ -416,6 +451,9 @@ def main():
 
     if cfg.get("api_enabled", False):
         start_web_api()
+
+    if cfg.get("mqtt_enabled", False):
+        start_mqtt_client()
 
     icon.run()
 

@@ -18,6 +18,13 @@ DEFAULT_CONFIG = {
     "api_port": 5000,
     "api_enabled": False,
     "mock": False,
+    "mqtt_enabled": False,
+    "mqtt_broker": "localhost",
+    "mqtt_port": 1883,
+    "mqtt_topic_prefix": "steelmouse",
+    "mqtt_username": "",
+    "mqtt_password": "",
+    "mqtt_discovery": True,
 }
 
 _config = None
