@@ -337,9 +337,17 @@ def get_battery(event: threading.Event):
                     else:
                         continue
                 else:
-                    device_id = f"keyboard_{obj['product_id']}_{obj['name']}"
-                    name = obj["name"]
-                    battery = obj["battery"]
+                    # Keyboard - could be MockMouse (mock mode) or dict (real mode)
+                    if isinstance(obj, dict):
+                        device_id = f"keyboard_{obj['product_id']}_{obj['name']}"
+                        name = obj["name"]
+                        battery = obj["battery"]
+                    else:
+                        # MockMouse in mock mode
+                        device_id = f"keyboard_{getattr(obj, 'product_id', 0)}_{obj.name}"
+                        name = obj.name
+                        battery = obj.battery
+                    
                     if battery is not None and battery["level"] is not None:
                         level = max(min(battery["level"], 100), 0)
                         is_charging = battery["is_charging"]

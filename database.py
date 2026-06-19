@@ -2,6 +2,7 @@ import os
 import sqlite3
 import sys
 import time
+import threading
 
 
 def _get_app_dir():
@@ -12,15 +13,14 @@ def _get_app_dir():
 
 DB_FILE = os.path.join(_get_app_dir(), "steelmouse.db")
 
-_connection = None
+_local = threading.local()
 
 
 def _get_connection():
-    global _connection
-    if _connection is None:
-        _connection = sqlite3.connect(DB_FILE)
-        _connection.row_factory = sqlite3.Row
-    return _connection
+    if not hasattr(_local, 'connection') or _local.connection is None:
+        _local.connection = sqlite3.connect(DB_FILE)
+        _local.connection.row_factory = sqlite3.Row
+    return _local.connection
 
 
 def init_db():
@@ -97,7 +97,6 @@ def get_latest(device_id=None):
 
 
 def close_db():
-    global _connection
-    if _connection is not None:
-        _connection.close()
-        _connection = None
+    if hasattr(_local, 'connection') and _local.connection is not None:
+        _local.connection.close()
+        _local.connection = None
