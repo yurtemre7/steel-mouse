@@ -1,4 +1,5 @@
 import rivalcfg, pystray, os, time, threading
+import hid as hid_lib
 from PIL import Image, ImageDraw, ImageFont
 from mock_mouse import MockMouse
 from battery_estimator import BatteryEstimator
@@ -60,9 +61,12 @@ def create_menu():
     if len(devices) > 1:
         device_menu_items = []
         for dev_id, dev_data in devices.items():
+            dev_type_label = f"[{dev_data['type'].capitalize()}]"
+            dev_name = f"{dev_data['name']} {dev_type_label}"
+            text = f"{dev_name} ({dev_data['level']}%)" if dev_data['level'] is not None else dev_name
             device_menu_items.append(
                 pystray.MenuItem(
-                    text=f"{dev_data['name']} ({dev_data['level']}%)" if dev_data['level'] is not None else dev_data['name'],
+                    text=text,
                     action=set_active_device,
                     checked=lambda dev_id=dev_id: dev_id == active_device_id,
                     default=(dev_id == active_device_id),
@@ -79,10 +83,12 @@ def create_menu():
     active_dev = devices.get(active_device_id, {}) if active_device_id else {}
     display_name = active_dev.get('name', mouse_name) or 'N/A'
     display_level = active_dev.get('level', battery_level)
+    display_type = active_dev.get('type', 'mouse')
+    type_label = f" [{display_type.capitalize()}]"
 
     menu_items.extend([
         pystray.MenuItem(
-            f"{i18n.t('name')}: {display_name}",
+            f"{i18n.t('name')}: {display_name}{type_label}",
             lambda: None,
             radio=False,
         ),
@@ -163,6 +169,11 @@ def create_menu():
             checked=lambda *_: api_enabled,
         ),
         pystray.MenuItem(
+            f"Dashboard: {i18n.t('on') if cfg.get('dashboard_enabled', False) else i18n.t('off')} (localhost:{cfg.get('dashboard_port', 8080)})",
+            toggle_dashboard,
+            checked=lambda *_: cfg.get("dashboard_enabled", False),
+        ),
+        pystray.MenuItem(
             f"MQTT: {i18n.t('on') if mqtt_enabled else i18n.t('off')} ({cfg.get('mqtt_broker', 'localhost')}:{cfg.get('mqtt_port', 1883)})",
             toggle_mqtt,
             checked=lambda *_: mqtt_enabled,
@@ -205,14 +216,82 @@ def get_icon_text_font(draw, text):
     return ImageFont.load_default(size=36)
 
 
+STEELSERIES_VENDOR_ID = 0x1038
+
+KNOWN_KEYBOARD_PRODUCT_IDS = {
+    0x121E, 0x1220, 0x1222, 0x1226, 0x1228,
+    0x1237, 0x123A, 0x123B, 0x123C, 0x1240,
+    0x1248, 0x124B, 0x124C, 0x1253, 0x125A,
+}
+
+KEYBOARD_BATTERY_COMMAND = [0x02, 0x00]
+KEYBOARD_BATTERY_RESPONSE_LENGTH = 32
+
+
+def _is_keyboard_device(vendor_id, product_id):
+    if product_id in KNOWN_KEYBOARD_PRODUCT_IDS:
+        return True
+    if (vendor_id, product_id) in rivalcfg.devices.PROFILES:
+        return False
+    return False
+
+
+def _read_keyboard_battery(vendor_id, product_id):
+    try:
+        device = hid_lib.device()
+        for interface in hid_lib.enumerate(vendor_id, product_id):
+            try:
+                device.open_path(interface["path"])
+                device.write(bytearray([0x00] + KEYBOARD_BATTERY_COMMAND))
+                data = device.read(KEYBOARD_BATTERY_RESPONSE_LENGTH, timeout_ms=200)
+                device.close()
+                if data and len(data) >= 3:
+                    level = data[1]
+                    is_charging = bool(data[2] & 0x01)
+                    if 0 <= level <= 100:
+                        return {"level": level, "is_charging": is_charging}
+            except Exception:
+                try:
+                    device.close()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return None
+
+
+def _scan_keyboards():
+    found = []
+    seen_product_ids = set()
+    for dev in hid_lib.enumerate(STEELSERIES_VENDOR_ID):
+        pid = dev["product_id"]
+        vid = dev["vendor_id"]
+        if pid in seen_product_ids:
+            continue
+        seen_product_ids.add(pid)
+        if _is_keyboard_device(vid, pid):
+            name = dev.get("product_string", f"SteelSeries Keyboard {pid:04X}")
+            battery = _read_keyboard_battery(vid, pid)
+            found.append({
+                "vendor_id": vid,
+                "product_id": pid,
+                "name": name,
+                "battery": battery,
+            })
+    return found
+
+
 def get_battery(event: threading.Event):
     global stopped, icon, battery_level, last_update, battery_charging, mock, mouse_name, active_device_id, devices
     mock = cfg.get("mock", False)
     while not stopped:
         try:
-            found_mice = []
+            found_devices = []
             if mock:
-                found_mice = [MockMouse("Fatih Gülcü", level=95)]
+                found_devices = [
+                    {"object": MockMouse("Fatih Gülcü", level=95), "type": "mouse"},
+                    {"object": MockMouse("SteelSeries Keyboard", level=80), "type": "keyboard"},
+                ]
             else:
                 plugged_devices = list(rivalcfg.devices.list_plugged_devices())
                 for dev in plugged_devices:
@@ -221,29 +300,52 @@ def get_battery(event: threading.Event):
                             vendor_id=dev["vendor_id"],
                             product_id=dev["product_id"],
                         )
-                        found_mice.append(mouse)
+                        found_devices.append({"object": mouse, "type": "mouse"})
                     except Exception:
                         continue
 
-            if not found_mice:
-                print("No mouse found")
+                for kb in _scan_keyboards():
+                    found_devices.append({
+                        "object": kb,
+                        "type": "keyboard",
+                    })
+
+            if not found_devices:
+                print("No devices found")
                 time.sleep(time_error_retry)
                 raise Exception
 
             new_devices = {}
-            for mouse in found_mice:
-                device_id = f"{getattr(mouse, 'product_id', 0)}_{mouse.name}"
-                battery = mouse.battery
-                if battery is not None and battery["level"] is not None:
-                    level = max(min(battery["level"], 100), 0)
-                    is_charging = battery["is_charging"]
-                    new_devices[device_id] = {
-                        "name": mouse.name,
-                        "level": level,
-                        "is_charging": is_charging,
-                        "type": "mouse",
-                    }
-                    database.save_battery(device_id, mouse.name, level, is_charging)
+            for entry in found_devices:
+                device_type = entry["type"]
+                obj = entry["object"]
+
+                if device_type == "mouse":
+                    device_id = f"mouse_{getattr(obj, 'product_id', 0)}_{obj.name}"
+                    battery = obj.battery
+                    name = obj.name
+                    if battery is not None and battery["level"] is not None:
+                        level = max(min(battery["level"], 100), 0)
+                        is_charging = battery["is_charging"]
+                    else:
+                        continue
+                else:
+                    device_id = f"keyboard_{obj['product_id']}_{obj['name']}"
+                    name = obj["name"]
+                    battery = obj["battery"]
+                    if battery is not None and battery["level"] is not None:
+                        level = max(min(battery["level"], 100), 0)
+                        is_charging = battery["is_charging"]
+                    else:
+                        continue
+
+                new_devices[device_id] = {
+                    "name": name,
+                    "level": level,
+                    "is_charging": is_charging,
+                    "type": device_type,
+                }
+                database.save_battery(device_id, name, level, is_charging)
 
             devices = new_devices
 
@@ -296,13 +398,15 @@ def get_battery(event: threading.Event):
 
 
 def create_battery_icon():
-    global battery_level, battery_charging
+    global battery_level, battery_charging, active_device_id, devices
     display_mode = cfg.get("display_mode", "hover")
     image = Image.new("RGB", (100, 100), color="white")
     draw = ImageDraw.Draw(image)
 
     draw.rectangle((0, 0, 100, 100), fill="black")
     error = load_image("no_error")
+
+    active_type = devices.get(active_device_id, {}).get("type", "mouse") if active_device_id else "mouse"
 
     def draw_battery_indicator(color, level):
         draw.rectangle((0, 0, 100, 100), fill="black")
@@ -311,12 +415,20 @@ def create_battery_icon():
     if battery_level is not None:
         if battery_charging:
             color = "orange"
-        elif battery_level < 20:
-            color = "red"
-        elif battery_level < 50:
-            color = "yellow"
+        elif active_type == "keyboard":
+            if battery_level < 20:
+                color = "red"
+            elif battery_level < 50:
+                color = "cyan"
+            else:
+                color = "blue"
         else:
-            color = "green"
+            if battery_level < 20:
+                color = "red"
+            elif battery_level < 50:
+                color = "yellow"
+            else:
+                color = "green"
 
         if display_mode == "icon":
             text = str(battery_level)
@@ -433,6 +545,16 @@ def toggle_mqtt(icon, item):
         icon.update_menu()
 
 
+def toggle_dashboard(icon, item):
+    enabled = not cfg.get("dashboard_enabled", False)
+    cfg.set("dashboard_enabled", enabled)
+    if enabled:
+        start_dashboard()
+    if icon is not None:
+        icon.menu = create_menu()
+        icon.update_menu()
+
+
 def quit_app(icon, item):
     global stopped
     mqtt_client.stop_mqtt()
@@ -501,6 +623,13 @@ def start_web_api():
     start_api_server(port)
 
 
+def start_dashboard():
+    from web_dashboard import init_dashboard, start_dashboard as _start
+    port = cfg.get("dashboard_port", 8080)
+    init_dashboard(get_battery_data, get_settings, update_settings, get_devices)
+    _start(port)
+
+
 def start_mqtt_client():
     mqtt_config = {
         "mqtt_broker": cfg.get("mqtt_broker", "localhost"),
@@ -535,6 +664,9 @@ def main():
 
     if cfg.get("api_enabled", False):
         start_web_api()
+
+    if cfg.get("dashboard_enabled", False):
+        start_dashboard()
 
     if cfg.get("mqtt_enabled", False):
         start_mqtt_client()
