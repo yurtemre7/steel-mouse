@@ -1,9 +1,10 @@
-# Import the essential modules
 import rivalcfg, pystray, os, time, threading
 from PIL import Image, ImageDraw, ImageFont
 from mock_mouse import MockMouse
+from battery_estimator import BatteryEstimator
+import i18n
+import config as cfg
 
-# Our state variables
 last_update = None
 battery_level = None
 battery_charging = None
@@ -11,115 +12,128 @@ icon = None
 image = None
 stopped = False
 event = None
+mock = False
 
-# Change the default in the `time_delta.txt` file to change the update interval
-time_delta_default = 60 * 5  # Default to 5 minutes if file is empty
-time_error_retry = 1 / 20  # Retry every 1/20 seconds if an error occurs
-time_delta = time_delta_default
-time_deltas = [60, 300, 600, 1800, 3600]  # 1min, 5min, 10min, 30min, 1h
-time_error = 60 * 0.2  # 60s * 0.2 = 12s
-display_mode_default = "hover"
-display_mode = display_mode_default
+estimator = BatteryEstimator()
+mouse_name = None
 
-directory = f"{os.path.dirname(os.path.realpath(__file__))}/"
-image_directory = f"{directory}images/"
+time_error_retry = 1 / 20
+time_error = 60 * 0.2
 
-mock = False # This is for debugging purposes, if you don't have a steel series mouse at hand but still want to test the program.
+import sys
 
+def _get_app_dir():
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.realpath(__file__))
 
-# Function to load the time delta from a file
-def load_time_delta():
-    global time_delta
-    try:
-        with open(f"{directory}time_delta.txt", "r") as f:
-            content = f.read().strip()
-            if content and content.isdigit():
-                time_delta = int(content)
-            else:
-                time_delta = time_delta_default
-            print(f"Time delta loaded: {time_delta} seconds")
-    except FileNotFoundError:
-        print("No time_delta.txt found, using default value.")
-        time_delta = time_delta_default
+def _get_data_dir():
+    if getattr(sys, 'frozen', False):
+        return sys._MEIPASS
+    return os.path.dirname(os.path.realpath(__file__))
+
+directory = f"{_get_app_dir()}/"
+image_directory = f"{_get_data_dir()}/images/"
 
 
-def load_display_mode():
-    global display_mode
-    try:
-        with open(f"{directory}display_mode.txt", "r") as f:
-            content = f.read().strip().lower()
-            if content in ["hover", "icon"]:
-                display_mode = content
-            else:
-                display_mode = display_mode_default
-            print(f"Display mode loaded: {display_mode}")
-    except FileNotFoundError:
-        print("No display_mode.txt found, using default value.")
-        display_mode = display_mode_default
+def load_config():
+    cfg.load_config()
+    i18n.set_lang(cfg.get("language", "tr"))
 
 
-def save_display_mode():
-    with open(f"{directory}display_mode.txt", "w+") as f:
-        f.write(display_mode)
+def create_menu():
+    remaining = estimator.get_remaining_seconds()
+    remaining_str = i18n.format_remaining_time(remaining)
+    interval = cfg.get("time_delta", 300)
+    api_enabled = cfg.get("api_enabled", False)
+    lang = i18n.get_lang()
 
-
-# Function to create the menu
-def create_menu(name, battery_level, last_update, battery_charging):
     return pystray.Menu(
         pystray.MenuItem(
-            f"Name: {name}",
+            f"{i18n.t('name')}: {mouse_name or 'N/A'}",
             lambda: None,
             radio=False,
         ),
         pystray.MenuItem(
-            f"Battery: {str(f'{battery_level}%' if battery_level is not None else 'N/A')}",
+            f"{i18n.t('battery')}: {str(f'{battery_level}%' if battery_level is not None else 'N/A')}",
             lambda: None,
         ),
         pystray.MenuItem(
-            ("Status: Charging" if battery_charging else "Status: Discharging"),
+            f"{i18n.t('remaining_time')}: {remaining_str}",
             lambda: None,
         ),
         pystray.MenuItem(
-            text="Last updated at: "
-            + time.strftime("%H:%M:%S", time.localtime(last_update))
-            + f" (Interval: {time_delta if battery_level is not None else time_error_retry}s)",
+            (i18n.t("status_charging") if battery_charging else i18n.t("status_discharging")),
+            lambda: None,
+        ),
+        pystray.MenuItem(
+            text=i18n.t("last_updated") + ": "
+            + (time.strftime("%H:%M:%S", time.localtime(last_update)) if last_update else "N/A")
+            + f" ({i18n.t('interval')}: {interval if battery_level is not None else time_error_retry}s)",
             action=pystray.Menu(
                 *[
                     pystray.MenuItem(
-                        text=f"{int(t / 60)} minute{'s' if t != 60 else ''}",
+                        text=f"{int(t / 60)} {i18n.t('minutes')}",
                         action=set_time_delta,
-                        checked=lambda t=t: t == time_delta,
-                        default=(t == time_delta),
+                        checked=lambda t=t: t == cfg.get("time_delta", 300),
+                        default=(t == cfg.get("time_delta", 300)),
                         radio=True,
                     )
-                    for t in time_deltas
+                    for t in [60, 300, 600, 1800, 3600]
                 ],
             ),
         ),
         pystray.MenuItem(
-            text="Tray battery display",
+            text=i18n.t("tray_display"),
             action=pystray.Menu(
                 pystray.MenuItem(
-                    text="Hover for percentage",
+                    text=i18n.t("hover_display"),
                     action=set_display_mode,
-                    checked=lambda _: display_mode == "hover",
-                    default=(display_mode == "hover"),
+                    checked=lambda *_: cfg.get("display_mode", "hover") == "hover",
+                    default=(cfg.get("display_mode", "hover") == "hover"),
                     radio=True,
                 ),
                 pystray.MenuItem(
-                    text="Show percentage on icon",
+                    text=i18n.t("icon_display"),
                     action=set_display_mode,
-                    checked=lambda _: display_mode == "icon",
-                    default=(display_mode == "icon"),
+                    checked=lambda *_: cfg.get("display_mode", "icon") == "icon",
+                    default=(cfg.get("display_mode", "hover") == "icon"),
                     radio=True,
                 ),
             ),
         ),
-        pystray.MenuItem("Quit", quit_app),
+        pystray.MenuItem(
+            text=i18n.t("language"),
+            action=pystray.Menu(
+                pystray.MenuItem(
+                    text="Türkçe",
+                    action=set_language,
+                    checked=lambda *_: lang == "tr",
+                    default=(lang == "tr"),
+                    radio=True,
+                ),
+                pystray.MenuItem(
+                    text="English",
+                    action=set_language,
+                    checked=lambda *_: lang == "en",
+                    default=(lang == "en"),
+                    radio=True,
+                ),
+            ),
+        ),
+        pystray.MenuItem(
+            i18n.t("refresh"),
+            refresh_connection,
+        ),
+        pystray.MenuItem(
+            f"API: {i18n.t('on') if api_enabled else i18n.t('off')} (localhost:{cfg.get('api_port', 5000)})",
+            toggle_api,
+            checked=lambda *_: api_enabled,
+        ),
+        pystray.MenuItem(i18n.t("quit"), quit_app),
     )
 
 
-# Function to load the images
 def load_image(image_name):
     return Image.open(f"{image_directory}{image_name}.png")
 
@@ -152,14 +166,14 @@ def get_icon_text_font(draw, text):
     return ImageFont.load_default(size=36)
 
 
-# Function to get the battery data
 def get_battery(event: threading.Event):
-    global stopped, icon, battery_level, last_update, battery_charging, mock
+    global stopped, icon, battery_level, last_update, battery_charging, mock, mouse_name
+    mock = cfg.get("mock", False)
     mouse = None
     while not stopped:
         try:
             if mock:
-                mouse = MockMouse("Emre Mock", level=95)
+                mouse = MockMouse("Fatih Gülcü", level=95)
             else:
                 mouse = rivalcfg.get_first_mouse()
             print(f"Mouse found {mouse}")
@@ -169,26 +183,35 @@ def get_battery(event: threading.Event):
                 raise Exception
 
             battery = mouse.battery
-            battery = mouse.battery
-
             print(f"Mouse battery {battery}")
 
             if battery is not None:
-                name = mouse.name
+                mouse_name = mouse.name
                 if battery["level"] is not None:
                     battery_level = max(min(battery["level"], 100), 0)
                     last_update = time.time()
                     battery_charging = battery["is_charging"]
+
+                    if not battery_charging:
+                        estimator.add_sample(battery_level)
+                    else:
+                        estimator.reset()
+
                 if icon is not None:
                     icon.icon = create_battery_icon()
-                    icon.menu = create_menu(
-                        name, battery_level, last_update, battery_charging
-                    )
-                    icon.title = f"Battery: {str(f'{battery_level}%' if battery_level is not None else 'N/A')}"
+                    icon.menu = create_menu()
+                    remaining = estimator.get_remaining_seconds()
+                    if battery_charging:
+                        icon.title = i18n.t("title_charging", battery=battery_level or "N/A")
+                    elif remaining is not None:
+                        icon.title = i18n.t("title_discharging", battery=battery_level or "N/A", time=i18n.format_remaining_time(remaining))
+                    else:
+                        icon.title = i18n.t("title_no_data")
                     icon.update_menu()
-                load_time_delta()
+
+                interval = cfg.get("time_delta", 300)
                 sleeptime = (
-                    time_delta if battery["level"] is not None else time_error_retry
+                    interval if battery["level"] is not None else time_error_retry
                 )
                 event.clear()
                 event.wait(timeout=sleeptime)
@@ -204,9 +227,9 @@ def get_battery(event: threading.Event):
     print("Stopping thread")
 
 
-# Create the battery icon based on the battery level and charging status
 def create_battery_icon():
-    global battery_level, battery_charging, display_mode
+    global battery_level, battery_charging
+    display_mode = cfg.get("display_mode", "hover")
     image = Image.new("RGB", (100, 100), color="white")
     draw = ImageDraw.Draw(image)
 
@@ -260,8 +283,6 @@ def create_battery_icon():
     return image
 
 
-# Function to refresh the connection
-# Legacy used to force an update
 def refresh_connection():
     global event
     if event is None:
@@ -270,62 +291,134 @@ def refresh_connection():
     event.set()
 
 
-# This function is called when you click to change the time delta
 def set_time_delta(icon, item):
     global event
     if event is None:
-        print("Event is None, cannot set time delta.")
         return
-    global time_delta
     new_time_delta = int(item.text.split(" ")[0]) * 60
-    print(f"Setting time delta to {new_time_delta} seconds.")
-    time_delta = new_time_delta
-    print(f"Time delta set to {time_delta} seconds.")
-    # save the value to a file or config if needed
-    with open(f"{directory}time_delta.txt", "w+") as f:
-        f.write(str(time_delta))
+    cfg.set("time_delta", new_time_delta)
     event.set()
 
 
 def set_display_mode(icon, item):
-    global event, display_mode
-    display_mode = "icon" if item.text == "Show percentage on icon" else "hover"
-    save_display_mode()
+    mode = "icon" if item.text == i18n.t("icon_display") else "hover"
+    cfg.set("display_mode", mode)
     if icon is not None:
         icon.icon = create_battery_icon()
+        icon.menu = create_menu()
         icon.update_menu()
     if event is not None:
         event.set()
 
 
-# This function is called when you click on the quit button
+def set_language(icon, item):
+    if item.text == "Türkçe":
+        i18n.set_lang("tr")
+    else:
+        i18n.set_lang("en")
+    if icon is not None:
+        icon.icon = create_battery_icon()
+        icon.menu = create_menu()
+        icon.update_menu()
+    if event is not None:
+        event.set()
+
+
+def toggle_api(icon, item):
+    enabled = not cfg.get("api_enabled", False)
+    cfg.set("api_enabled", enabled)
+    if enabled:
+        start_web_api()
+    if icon is not None:
+        icon.menu = create_menu()
+        icon.update_menu()
+
+
 def quit_app(icon, item):
     global stopped
     icon.stop()
     stopped = True
 
 
-# This is the main function, where we initialize the system tray icon and start the thread
+def get_battery_data():
+    remaining = estimator.get_remaining_seconds()
+    return {
+        "level": battery_level,
+        "is_charging": battery_charging,
+        "remaining_time": remaining,
+        "remaining_time_str": i18n.format_remaining_time(remaining),
+        "last_update": last_update,
+        "name": mouse_name,
+    }
+
+
+def get_settings():
+    return {
+        "time_delta": cfg.get("time_delta", 300),
+        "display_mode": cfg.get("display_mode", "hover"),
+        "language": cfg.get("language", "tr"),
+        "api_port": cfg.get("api_port", 5000),
+        "api_enabled": cfg.get("api_enabled", False),
+    }
+
+
+def update_settings(data):
+    allowed = ["time_delta", "display_mode", "language"]
+    updated = {}
+    for key in allowed:
+        if key in data:
+            cfg.set(key, data[key])
+            updated[key] = data[key]
+    if "language" in data:
+        i18n.set_lang(data["language"])
+    if event is not None:
+        event.set()
+    return {"updated": updated, "settings": get_settings()}
+
+
+def get_devices():
+    devices = []
+    if mouse_name is not None:
+        remaining = estimator.get_remaining_seconds()
+        devices.append({
+            "name": mouse_name,
+            "battery_level": battery_level,
+            "is_charging": battery_charging,
+            "remaining_time": remaining,
+        })
+    return {"devices": devices}
+
+
+def start_web_api():
+    from api_server import init_api, start_api_server
+    port = cfg.get("api_port", 5000)
+    init_api(get_battery_data, get_settings, update_settings, refresh_connection, get_devices)
+    start_api_server(port)
+
+
 def main():
     global icon, event, image
 
-    load_display_mode()
+    load_config()
     event = threading.Event()
     image = create_battery_icon()
-    icon = pystray.Icon("Battery", icon=image, title="Battery: N/A")
+    icon = pystray.Icon("Battery", icon=image, title=i18n.t("title_no_data"))
     thread = threading.Thread(target=get_battery, args=(event,))
     thread.daemon = True
     thread.start()
     icon.menu = pystray.Menu(
         pystray.MenuItem(
-            "Looking for mouse and mouse data...",
+            i18n.t("looking_for_mouse"),
             lambda: None,
         ),
-        pystray.MenuItem("Quit", quit_app),
+        pystray.MenuItem(i18n.t("quit"), quit_app),
     )
+
+    if cfg.get("api_enabled", False):
+        start_web_api()
+
     icon.run()
 
 
-# Python boilerplate
 if __name__ == "__main__":
     main()
