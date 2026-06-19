@@ -1,32 +1,49 @@
 # SteelMouse
 
-This is a handy Windows application that retrieves the battery level of your Steelseries mouse and displays it in the system tray.
+A Windows system tray application that monitors SteelSeries mouse battery level, with smart home integration via MQTT and REST API.
 
 ![System Tray Image of the App SteelMouse](assets/image.png)
 
-## Website
-[SteelMouse Website](https://www.yurtemre.de/steelmouse)
+## Features
+
+- **Battery Monitoring**: Real-time battery level display in system tray
+- **Remaining Time Estimation**: Calculates estimated time remaining based on discharge rate
+- **Charging Status**: Shows whether the mouse is charging or discharging
+- **Turkish/English Support**: Menu-based language selection
+- **MQTT Integration**: Publish battery data to Home Assistant, Google Home, Apple Home
+- **REST API**: Local API for custom integrations
+- **Configurable Update Interval**: 1min, 5min, 10min, 30min, 1h
 
 ## Table of Contents
 
+- [Features](#features)
 - [Usage](#usage)
 - [Tested Devices](#tested-devices)
 - [Installation](#installation)
-  - [Latest Version (Recommended)](#latest-version-recommended)
+- [MQTT Setup (Home Assistant)](#mqtt-setup-home-assistant)
+- [REST API](#rest-api)
+- [Configuration](#configuration)
 - [Building from Source](#building-application-and-installer-from-source)
-- [Supported Devices](#supported-devices)
 - [Troubleshooting](#troubleshooting)
-- [Uninstallation](#uninstallation)
 - [Acknowledgements](#acknowledgements)
 - [License](#license)
 
 ## Usage
 
-Once the application is started, you can hover over the icon to see the battery level. If you prefer, right-click the tray icon and switch **Tray battery display** to **Show percentage on icon** to display the number directly on the system tray icon. You can switch back to hover-only at any time.
+Once the application is started, you can hover over the icon to see the battery level and remaining time.
 
-## Our Tested/Working Devices
+Right-click the tray icon to access:
+- **Battery**: Current level and remaining time
+- **Status**: Charging/Discharging
+- **Tray battery display**: Switch between hover and icon percentage display
+- **Language**: Türkçe / English
+- **Refresh**: Force immediate battery update
+- **API**: Toggle REST API on/off
+- **MQTT**: Toggle MQTT connection on/off
 
-- Steelseries AEROX 3 Wireless (2.4G mode)
+## Tested/Working Devices
+
+- Steelseries AEROX 3 Wireless (2.4G and wired mode)
 - Steelseries AEROX 5 Wireless (2.4G mode)
 - Steelseries AEROX 9 Wireless (2.4G mode)
 - Steelseries Prime Wireless
@@ -34,52 +51,164 @@ Once the application is started, you can hover over the icon to see the battery 
 
 ## Installation
 
-### Latest Version (Recommended)
+### Pre-built Executable (Recommended)
 
-1. Download the latest application installer from the [Releases](https://github.com/yurtemre7/mouse-battery/releases/) tab.
-2. Run the installer. This will install the application and place a shortcut in your Start Menu and add it to your auto-startup folder.
-3. After installation, the installer will ask you if you want to run the application. If you choose not to, you can run it from the Start Menu shortcut or by restarting your computer.
+1. Download the latest `mouse.exe` from the [Releases](https://github.com/crowroser/steel-mouse/releases/) tab.
+2. Place `mouse.exe` in a folder of your choice.
+3. Create a `config.json` in the same folder (see [Configuration](#configuration)).
+4. Run `mouse.exe`.
 
-#### Manual installation
+### Manual Installation
 
-1. Download the Git repository as a zip file and extract it somewhere (or clone it with Git).
-2. Install [Python 3](<https://www.python.org/downloads/>) and ensure you check the box to add it to your PATH.<br>*Optionally*, you can also use [uv](https://github.com/astral-sh/uv?tab=readme-ov-file#installation) for this project.
-3. Install the following packages via the `pip install -r requirements.txt` command in the `mouse-battery` folder.
-4. Run the script:
-   - Place the `start_mouse.bat` file as a shortcut in your startup folder (C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup).
-   - You may need to modify the bat script to point to your Python installation if you have multiple versions installed or have renamed the executable.
-   - Alternatively, you can run the script manually.
+1. Clone the repository:
+   ```sh
+   git clone https://github.com/crowroser/steel-mouse.git
+   cd steel-mouse
+   ```
 
-## Building application and installer from source
+2. Install Python 3.10+ and dependencies:
+   ```sh
+   pip install -r requirements.txt
+   ```
 
-To build the application yourself, check out [`BUILDING.md`](./BUILDING.md)
+3. Run the application:
+   ```sh
+   python mouse.py
+   ```
 
-## Supported Devices
+## MQTT Setup (Home Assistant)
 
-The `rivalcfg` library supports a variety of devices. A complete list of supported devices can be found [here](https://flozz.github.io/rivalcfg/devices/index.html).
+SteelMouse supports MQTT auto-discovery for Home Assistant.
+
+### Prerequisites
+
+- MQTT broker (e.g., Mosquitto) running on your network
+- Home Assistant with MQTT integration configured
+
+### Configuration
+
+Add to your `config.json`:
+
+```json
+{
+  "mqtt_enabled": true,
+  "mqtt_broker": "192.168.1.100",
+  "mqtt_port": 1883,
+  "mqtt_topic_prefix": "steelmouse",
+  "mqtt_username": "",
+  "mqtt_password": "",
+  "mqtt_discovery": true
+}
+```
+
+### MQTT Topics
+
+| Topic | Description |
+|-------|-------------|
+| `steelmouse/battery/level` | Battery percentage (0-100) |
+| `steelmouse/battery/charging` | Charging status (true/false) |
+| `steelmouse/battery/remaining_time` | Remaining time in seconds |
+| `steelmouse/battery/name` | Device name |
+| `steelmouse/status` | Online/Offline status |
+
+### Home Assistant Auto-Discovery
+
+When `mqtt_discovery` is enabled, SteelMouse automatically publishes discovery messages to:
+- `homeassistant/sensor/steelmouse_battery/config`
+- `homeassistant/binary_sensor/steelmouse_charging/config`
+- `homeassistant/sensor/steelmouse_remaining/config`
+
+Home Assistant will automatically detect and add these sensors.
+
+## REST API
+
+SteelMouse includes a local REST API (disabled by default).
+
+### Enable API
+
+Set `"api_enabled": true` in `config.json` or toggle via the tray menu.
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/battery` | Battery level, charging status, remaining time |
+| GET | `/api/settings` | Current application settings |
+| POST | `/api/settings` | Update settings (JSON body) |
+| GET | `/api/devices` | List connected devices |
+| POST | `/api/refresh` | Force battery refresh |
+
+### Example Response
+
+```json
+{
+  "level": 85,
+  "is_charging": false,
+  "remaining_time": 3600,
+  "remaining_time_str": "1h 0m",
+  "last_update": 1781869992.63,
+  "name": "SteelSeries Aerox 3 Wireless"
+}
+```
+
+## Configuration
+
+Create a `config.json` in the application directory:
+
+```json
+{
+  "time_delta": 300,
+  "display_mode": "hover",
+  "language": "tr",
+  "api_port": 5000,
+  "api_enabled": false,
+  "mock": false,
+  "mqtt_enabled": false,
+  "mqtt_broker": "localhost",
+  "mqtt_port": 1883,
+  "mqtt_topic_prefix": "steelmouse",
+  "mqtt_username": "",
+  "mqtt_password": "",
+  "mqtt_discovery": true
+}
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `time_delta` | 300 | Update interval in seconds |
+| `display_mode` | "hover" | "hover" or "icon" |
+| `language` | "tr" | "tr" (Turkish) or "en" (English) |
+| `api_port` | 5000 | REST API port |
+| `api_enabled` | false | Enable REST API |
+| `mock` | false | Use mock mouse for testing |
+| `mqtt_enabled` | false | Enable MQTT publishing |
+| `mqtt_broker` | "localhost" | MQTT broker address |
+| `mqtt_port` | 1883 | MQTT broker port |
+| `mqtt_topic_prefix` | "steelmouse" | MQTT topic prefix |
+| `mqtt_username` | "" | MQTT username (optional) |
+| `mqtt_password` | "" | MQTT password (optional) |
+| `mqtt_discovery` | true | Enable HA auto-discovery |
+
+## Building from Source
+
+To build a standalone executable:
+
+```sh
+pip install pyinstaller
+pyinstaller --onefile --icon=images/logo.ico --noconsole --add-data "images;images" mouse.py
+```
+
+The executable will be in the `dist/` folder.
 
 ## Troubleshooting
 
-If you encounter any issues, first check the [`KNOWNISSUES.md`](./KNOWNISSUES.md) file in the repository to see if your problem is already listed.
+If you encounter any issues, first check the [`KNOWNISSUES.md`](./KNOWNISSUES.md) file.
 
-If your problem is not listed, you can run the script in the `mouse-battery` folder. Note the output of the script and open an issue with the output and your mouse model. Provide additional details, such as whether you have multiple mice connected, your connection mode, etc.
+For debugging, run with console output:
 
 ```sh
 python mouse.py
 ```
-
-## Uninstallation
-
-### Latest Version
-
-1. Go to the Control Panel and select "Uninstall a program".
-2. Find "SteelMouse" in the list and click "Uninstall".
-
-### Older Version
-
-1. Delete the `mouse-battery` folder.
-2. Delete the `start_mouse.bat` file in your startup folder (C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup).
-3. Uninstall Python 3 if you no longer need it.
 
 ## Acknowledgements
 
