@@ -1,1 +1,1 @@
-pyinstaller --onefile --icon=images/logo.ico --noconsole --add-data images:images mouse.py
+pyinstaller --onefile --icon=images/logo.ico --noconsole --add-data images:images --add-data templates:templates --add-data static:static mouse.py

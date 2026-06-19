@@ -5,3 +5,4 @@ innosetup/*.exe
 innosetup/*.zip
 __pycache__/
 *.pyc
+steelmouse.db

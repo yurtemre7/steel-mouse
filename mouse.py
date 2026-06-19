@@ -171,7 +171,7 @@ def create_menu():
             checked=lambda *_: api_enabled,
         ),
         pystray.MenuItem(
-            f"Dashboard: {i18n.t('on') if cfg.get('dashboard_enabled', False) else i18n.t('off')} (localhost:{cfg.get('dashboard_port', 8080)})",
+            f"Dashboard: {i18n.t('on') if cfg.get('dashboard_enabled', False) else i18n.t('off')} (steel.local:{cfg.get('dashboard_port', 8080)})",
             toggle_dashboard,
             checked=lambda *_: cfg.get("dashboard_enabled", False),
         ),
