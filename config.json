@@ -11,5 +11,8 @@
   "mqtt_topic_prefix": "steelmouse",
   "mqtt_username": "",
   "mqtt_password": "",
-  "mqtt_discovery": true
+  "mqtt_discovery": true,
+  "dashboard_enabled": false,
+  "dashboard_port": 8080,
+  "auto_start": false
 }

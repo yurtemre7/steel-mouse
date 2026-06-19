@@ -39,6 +39,7 @@ TRANSLATIONS = {
         "title_no_data": "Batarya: N/A",
         "on": "Açık",
         "off": "Kapalı",
+        "auto_start": "Otomatik Başlat",
     },
     "en": {
         "battery": "Battery",
@@ -78,6 +79,7 @@ TRANSLATIONS = {
         "title_no_data": "Battery: N/A",
         "on": "On",
         "off": "Off",
+        "auto_start": "Auto Start",
     },
 }
 

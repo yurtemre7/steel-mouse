@@ -7,6 +7,7 @@ import i18n
 import config as cfg
 import mqtt_client
 import database
+import auto_start
 
 last_update = None
 battery_level = None
@@ -177,6 +178,11 @@ def create_menu():
             f"MQTT: {i18n.t('on') if mqtt_enabled else i18n.t('off')} ({cfg.get('mqtt_broker', 'localhost')}:{cfg.get('mqtt_port', 1883)})",
             toggle_mqtt,
             checked=lambda *_: mqtt_enabled,
+        ),
+        pystray.MenuItem(
+            f"{i18n.t('auto_start')}: {i18n.t('on') if cfg.get('auto_start', False) else i18n.t('off')}",
+            toggle_auto_start,
+            checked=lambda *_: cfg.get("auto_start", False),
         ),
         pystray.MenuItem(i18n.t("quit"), quit_app),
     ])
@@ -545,6 +551,14 @@ def toggle_mqtt(icon, item):
         icon.update_menu()
 
 
+def toggle_auto_start(icon, item):
+    new_state = auto_start.toggle()
+    cfg.set("auto_start", new_state)
+    if icon is not None:
+        icon.menu = create_menu()
+        icon.update_menu()
+
+
 def toggle_dashboard(icon, item):
     enabled = not cfg.get("dashboard_enabled", False)
     cfg.set("dashboard_enabled", enabled)
@@ -647,6 +661,7 @@ def main():
     global icon, event, image
 
     load_config()
+    cfg.set("auto_start", auto_start.is_enabled())
     database.init_db()
     event = threading.Event()
     image = create_battery_icon()

@@ -25,6 +25,9 @@ DEFAULT_CONFIG = {
     "mqtt_username": "",
     "mqtt_password": "",
     "mqtt_discovery": True,
+    "dashboard_enabled": False,
+    "dashboard_port": 8080,
+    "auto_start": False,
 }
 
 _config = None
