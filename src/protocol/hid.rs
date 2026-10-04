@@ -288,31 +288,36 @@ impl MouseManager {
                 None
             }
             BatteryKind::Rival3Or650 => {
-                for _write_attempt in 0..3 {
+                for write_attempt in 0..3 {
                     let mut req_64 = [0u8; 64];
                     req_64[0] = 0x00;
                     req_64[1] = 0xAA;
                     req_64[2] = 0x01;
 
-                    let write_ok = device.write(&req_64).is_ok()
-                        || device.write(&[0x00, 0xAA, 0x01]).is_ok()
+                    let write_ok = device.write(&[0x00, 0xAA, 0x01]).is_ok()
+                        || device.write(&req_64).is_ok()
                         || device.send_feature_report(&[0x00, 0xAA, 0x01]).is_ok();
 
                     if !write_ok {
+                        log::log(&format!("Rival3Or650 write failed (attempt {})", write_attempt));
                         continue;
                     }
 
                     let mut res = [0u8; 64];
-                    for _attempt in 0..6 {
-                        match device.read_timeout(&mut res, 100) {
+                    for attempt in 0..6 {
+                        match device.read_timeout(&mut res, 150) {
                             Ok(read_len) if read_len >= 2 => {
-                                let is_battery_response = res[0] == 0xAA
-                                    || (res[0] == 0x00 && read_len >= 3 && res[1] == 0xAA);
-                                if is_battery_response {
-                                    if let Some(decoded) = Self::decode_rival3_650_response(&res[..read_len]) {
-                                        return Some(decoded);
-                                    }
+                                log::log(&format!(
+                                    "Rival3Or650 attempt {}.{} raw[0..8]={:?}",
+                                    write_attempt, attempt, &res[..read_len.min(8)]
+                                ));
+                                if let Some(decoded) = Self::decode_rival3_650_response(&res[..read_len]) {
+                                    return Some(decoded);
                                 }
+                                log::log(&format!(
+                                    "  -> Skipping invalid Rival3Or650 report (res[0..4]={:?})",
+                                    &res[..read_len.min(4)]
+                                ));
                             }
                             Ok(0) => continue,
                             Ok(_) | Err(_) => break,
@@ -389,21 +394,49 @@ impl MouseManager {
     }
 
     fn decode_rival3_650_response(res: &[u8]) -> Option<(Option<u8>, bool)> {
-        if res.is_empty() {
+        if res.len() < 2 || res.iter().all(|&b| b == 0) {
             return None;
         }
 
-        let (level_byte, charging_byte) = if res[0] == 0x00 && res.len() >= 4 {
-            (res[1], res[3])
+        let (level_byte, is_charging) = if res[0] == 0xAA {
+            // Echo format without report ID prefix: [0xAA, 0x01, level, charging] or [0xAA, level, charging]
+            if res.len() >= 4 && res[1] == 0x01 {
+                (res[2], res[3] != 0)
+            } else if res.len() >= 3 {
+                (res[1], res[2] != 0)
+            } else {
+                return None;
+            }
+        } else if res[0] == 0x00 && res.len() >= 3 && res[1] == 0xAA {
+            // Echo format with report ID prefix: [0x00, 0xAA, 0x01, level, charging] or [0x00, 0xAA, level, charging]
+            if res.len() >= 5 && res[2] == 0x01 {
+                (res[3], res[4] != 0)
+            } else if res.len() >= 4 {
+                (res[2], res[3] != 0)
+            } else {
+                return None;
+            }
+        } else if res[0] == 0x00 && res.len() >= 4 {
+            // Windows format: [0x00, level_lo, level_hi (0x00), charging]
+            (res[1], res[3] != 0)
         } else if res.len() >= 3 {
-            (res[0], res[2])
+            // macOS / direct format: [level_lo, level_hi (0x00), charging]
+            (res[0], res[2] != 0)
+        } else if res[0] == 0x00 && res.len() >= 2 {
+            (res[1], false)
         } else {
-            (res[0], 0)
+            (res[0], false)
         };
 
-        let level = Some(level_byte.min(100));
-        let is_charging = charging_byte != 0;
-        Some((level, is_charging))
+        // Battery percentage must be between 0 and 100.
+        // If level_byte > 100, this is not a valid battery packet.
+        if level_byte > 100 {
+            log::log(&format!("decode_rival3_650: invalid level_byte={} (> 100), skipping", level_byte));
+            return None;
+        }
+
+        log::log(&format!("decode_rival3_650: level={} charging={}", level_byte, is_charging));
+        Some((Some(level_byte), is_charging))
     }
 
     fn query_generic_fallback(device: &HidDevice) -> Option<(Option<u8>, bool)> {
@@ -523,6 +556,29 @@ mod tests {
         let decoded = MouseManager::decode_rival3_650_response(&res_90_charging).expect("Should decode");
         assert_eq!(decoded.0, Some(90));
         assert_eq!(decoded.1, true);
+    }
+
+    #[test]
+    fn test_decode_rival3_650_echo_format() {
+        // Echo format without report ID prefix
+        let res_echo = [0xAA, 0x01, 80, 0];
+        let decoded = MouseManager::decode_rival3_650_response(&res_echo).expect("Should decode echo");
+        assert_eq!(decoded.0, Some(80));
+        assert_eq!(decoded.1, false);
+
+        // Echo format with report ID prefix
+        let res_echo_win = [0x00, 0xAA, 0x01, 80, 1];
+        let decoded = MouseManager::decode_rival3_650_response(&res_echo_win).expect("Should decode win echo");
+        assert_eq!(decoded.0, Some(80));
+        assert_eq!(decoded.1, true);
+
+        // All zero buffer should return None
+        let res_zero = [0, 0, 0, 0];
+        assert!(MouseManager::decode_rival3_650_response(&res_zero).is_none());
+
+        // Out of range level should return None
+        let res_invalid = [0x00, 150, 0, 0];
+        assert!(MouseManager::decode_rival3_650_response(&res_invalid).is_none());
     }
 
     #[test]

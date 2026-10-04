@@ -195,7 +195,7 @@ fn main() {
     }
 
     log::init();
-    log::log(&format!("Starting SteelMouse v2.5.0 (Rust System Tray) | mock={}", args.mock));
+    log::log(&format!("Starting SteelMouse v2.5.1 (Rust System Tray) | mock={}", args.mock));
     if args.mock {
         println!("Running in MOCK mode!");
     }
