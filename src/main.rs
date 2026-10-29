@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod analyzer;
 mod autostart;
 mod config;
 mod devices;
@@ -30,18 +31,52 @@ struct Args {
     /// Record mouse HID diagnostic data and export JSON report for new/unsupported mice
     #[arg(short, long, num_args = 0..=1, value_name = "FILE")]
     record: Option<Option<std::path::PathBuf>>,
+
+    /// Optional battery percentage (0-100) currently displayed in SteelSeries GG to match during recording
+    #[arg(short, long, value_name = "PERCENT")]
+    battery: Option<u8>,
+
+    /// Open the interactive Mouse Analyzer & GitHub Issue Generator GUI
+    #[arg(short, long)]
+    analyze: bool,
 }
 
 fn main() {
     let args = Args::parse();
 
+    if args.analyze {
+        log::init();
+        if let Err(e) = analyzer::run_analyzer_window() {
+            eprintln!("Error: {}", e);
+        }
+        return;
+    }
+
     if let Some(path_opt) = &args.record {
         println!("=== SteelMouse Hardware Diagnostic Recorder ===");
         let custom_path = path_opt.as_ref().map(|p| p.as_path());
-        match protocol::recorder::save_diagnostic_file(custom_path) {
-            Ok(saved_path) => {
+        let known_battery = args.battery.or_else(|| {
+            use std::io::{self, Write};
+            print!("Enter current battery % shown in SteelSeries GG (0-100, or press Enter to skip): ");
+            let _ = io::stdout().flush();
+            let mut input = String::new();
+            if io::stdin().read_line(&mut input).is_ok() {
+                input.trim().trim_end_matches('%').trim().parse::<u8>().ok().filter(|&b| b <= 100)
+            } else {
+                None
+            }
+        });
+
+        match protocol::recorder::save_diagnostic_file_with_battery(custom_path, known_battery) {
+            Ok((saved_path, report)) => {
                 println!("\n✅ Successfully exported diagnostic report!");
                 println!("📁 File: {}", saved_path.display());
+                if let Some(rec) = report.get("recommended_profile").filter(|v| !v.is_null()) {
+                    if let Some(code) = rec.get("rust_profile_code").and_then(|c| c.as_str()) {
+                        println!("\n--- Auto-Detected Rust Profile (`src/protocol/devices.rs`) ---");
+                        println!("{}", code);
+                    }
+                }
                 println!("\n💡 To request support for a new mouse, attach this JSON file to a GitHub issue:");
                 println!("🔗 https://github.com/yurtemre7/steel-mouse/issues/new");
             }

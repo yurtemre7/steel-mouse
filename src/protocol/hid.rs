@@ -54,7 +54,7 @@ pub struct MouseManager {
     tracker: BatteryTracker,
 }
 
-fn get_interface_number(info: &DeviceInfo) -> i32 {
+pub fn get_interface_number(info: &DeviceInfo) -> i32 {
     if info.interface_number() >= 0 {
         return info.interface_number();
     }
@@ -329,7 +329,11 @@ impl MouseManager {
             }
         }
     }
-    fn decode_aerox_prime_response(res: &[u8]) -> Option<(Option<u8>, bool)> {
+    pub fn clear_cache(&mut self) {
+        self.cached_device = None;
+    }
+
+    pub fn decode_aerox_prime_response(res: &[u8]) -> Option<(Option<u8>, bool)> {
         if res.len() < 2 {
             return None;
         }
@@ -366,7 +370,7 @@ impl MouseManager {
         Some((level, is_charging))
     }
 
-    fn decode_direct_aerox_response(res: &[u8]) -> Option<(Option<u8>, bool)> {
+    pub fn decode_direct_aerox_response(res: &[u8]) -> Option<(Option<u8>, bool)> {
         if res.len() < 2 {
             return None;
         }
@@ -393,7 +397,7 @@ impl MouseManager {
         Some((level, is_charging))
     }
 
-    fn decode_rival3_650_response(res: &[u8]) -> Option<(Option<u8>, bool)> {
+    pub fn decode_rival3_650_response(res: &[u8]) -> Option<(Option<u8>, bool)> {
         if res.len() < 2 || res.iter().all(|&b| b == 0) {
             return None;
         }

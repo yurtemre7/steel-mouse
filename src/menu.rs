@@ -102,8 +102,8 @@ impl TrayMenu {
         let is_autostart = crate::autostart::is_autostart_enabled();
         let autostart_item = CheckMenuItem::new("Start Automatically on Login", true, is_autostart, None);
 
-        // 6. Diagnostic Export Option
-        let export_diag_item = MenuItem::new("📋 Export Mouse Diagnostics (JSON)", true, None);
+        // 6. Diagnostic & Analyzer Option
+        let export_diag_item = MenuItem::new("🔍 Analyze / Report Unsupported Mouse...", true, None);
 
         // 7. Quit Option
         let quit_item = MenuItem::new("Quit", true, None);

@@ -17,6 +17,11 @@ enum AppMessage {
     BatteryUpdated(Result<BatteryInfo, String>, String),
 }
 
+enum HidCommand {
+    Wake,
+    ReleaseDevice,
+}
+
 #[cfg(target_os = "macos")]
 fn set_macos_activation_policy(accessory: bool) {
     if let Some(mtm) = objc2_foundation::MainThreadMarker::new() {
@@ -55,7 +60,7 @@ pub fn run_tray_app(mock_mode: bool) {
     let config_for_hid = current_config.clone();
 
     let (tx, rx) = channel::<AppMessage>();
-    let (wake_tx, wake_rx) = channel::<()>();
+    let (wake_tx, wake_rx) = channel::<HidCommand>();
 
     // --- Build tray icon & menu ---
     let initial_icon = create_tray_icon(None, false, config.display_mode);
@@ -99,8 +104,13 @@ pub fn run_tray_app(mock_mode: bool) {
 
                 let mut elapsed = 0u64;
                 while elapsed < sleep_secs {
-                    if wake_rx.recv_timeout(Duration::from_secs(1)).is_ok() {
-                        break;
+                    match wake_rx.recv_timeout(Duration::from_secs(1)) {
+                        Ok(HidCommand::Wake) => break,
+                        Ok(HidCommand::ReleaseDevice) => {
+                            log::log("HID worker: releasing cached device handle for analyzer");
+                            mouse_manager.clear_cache();
+                        }
+                        Err(_) => {}
                     }
                     elapsed += 1;
                     if elapsed >= config_for_hid.lock().unwrap().time_delta {
@@ -169,7 +179,7 @@ pub fn run_tray_app(mock_mode: bool) {
                 std::process::exit(0);
             } else if event.id == refresh_id {
                 log::log("Refresh clicked");
-                let _ = wake_tx.send(());
+                let _ = wake_tx.send(HidCommand::Wake);
             } else if event.id == autostart_id {
                 let m = tray_menu.lock().unwrap();
                 let is_checked = m.autostart_item.is_checked();
@@ -178,16 +188,9 @@ pub fn run_tray_app(mock_mode: bool) {
                 let _ = crate::autostart::set_autostart(target_state);
                 m.autostart_item.set_checked(target_state);
             } else if event.id == export_diag_id {
-                log::log("Export Diagnostics clicked");
-                std::thread::spawn(|| {
-                    match crate::protocol::recorder::save_diagnostic_file(None) {
-                        Ok(p) => {
-                            log::log(&format!("Exported diagnostic report to {}", p.display()));
-                            crate::protocol::recorder::open_file_in_file_manager(&p);
-                        }
-                        Err(e) => log::log(&format!("Failed to export diagnostic report: {}", e)),
-                    }
-                });
+                log::log("Analyze / Export Diagnostics clicked");
+                let _ = wake_tx.send(HidCommand::ReleaseDevice);
+                crate::analyzer::spawn_analyzer_subprocess();
             } else {
                 let mut cfg = current_config.lock().unwrap().clone();
                 let mut changed = false;
@@ -210,7 +213,7 @@ pub fn run_tray_app(mock_mode: bool) {
                     log::log(&format!("Config changed: mode={:?} interval={}s", cfg.display_mode, cfg.time_delta));
                     cfg.save();
                     *current_config.lock().unwrap() = cfg;
-                    let _ = wake_tx.send(());
+                    let _ = wake_tx.send(HidCommand::Wake);
                 }
             }
         }
