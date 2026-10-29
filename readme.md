@@ -65,17 +65,6 @@ cargo run -- --mock
 cargo build --release
 ```
 
-### Legacy Python Version (`steelmouse_python/`)
-```bash
-cd steelmouse_python
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run legacy Python script
-python mouse.py
-```
-
 ---
 
 ## 🤝 Acknowledgements

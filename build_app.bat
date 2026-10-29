@@ -1,1 +1,0 @@
-pyinstaller --onefile --icon=images/logo.ico --noconsole --add-data images:images mouse.py

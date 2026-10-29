@@ -2,7 +2,7 @@
 
 [Setup]
 AppName={#MyAppName}
-AppVersion=2.5.1
+AppVersion=2.6.0
 DefaultDirName={userpf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 PrivilegesRequired=lowest
@@ -12,7 +12,7 @@ OutputDir=.
 OutputBaseFilename=SteelMouse_Rust_Setup
 Compression=lzma2/ultra64
 SolidCompression=no
-SetupIconFile=..\steelmouse_python\images\logo.ico
+SetupIconFile=..\assets\logo.ico
 
 [Files]
 Source: "..\target\x86_64-pc-windows-msvc\release\steelmouse.exe"; DestDir: "{app}"; Flags: skipifsourcedoesntexist ignoreversion
