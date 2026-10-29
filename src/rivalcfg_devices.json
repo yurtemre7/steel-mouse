@@ -347,6 +347,18 @@
     "has_battery": false
   },
   {
+    "name": "SteelSeries Rival Pro",
+    "vendor_id": 4152,
+    "product_id": 6272,
+    "endpoint": 2,
+    "has_battery": true,
+    "command": [
+      146
+    ],
+    "report_type": 2,
+    "family": "direct_aerox"
+  },
+  {
     "name": "SteelSeries Rival 95",
     "vendor_id": 4152,
     "product_id": 5894,

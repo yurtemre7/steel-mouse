@@ -25,6 +25,7 @@
 - SteelSeries Prime Wireless & Prime Mini Wireless
 - SteelSeries Rival 3 Wireless (Gen 1 & Gen 2)
 - SteelSeries Rival 650 Wireless
+- SteelSeries Rival Pro Wireless
 
 ---
 

@@ -12,7 +12,7 @@ pub struct MouseProfile {
 pub enum BatteryKind {
     /// Command 0x92 (146) or 0xD2 (210) - Aerox 3/5/9, Prime / Prime Mini (1..21 scale)
     AeroxPrime { command: u8 },
-    /// Command 0x92 or 0xD2 with direct 0..100% percentage byte - Aerox 3 Gen 2
+    /// Command 0x92 or 0xD2 with direct 0..100% percentage byte - Aerox 3 Gen 2, Rival Pro
     DirectAerox { command: u8 },
     /// Command [0xAA, 0x01] (170, 1) - Rival 3 Wireless, Rival 650
     Rival3Or650,
@@ -278,6 +278,13 @@ pub fn get_profile(vendor_id: u16, product_id: u16) -> Option<MouseProfile> {
             product_id: 0x183e,
             endpoint: 3,
             battery_kind: None,
+        }),
+        (0x1038, 0x1880) => Some(MouseProfile {
+            name: "SteelSeries Rival Pro",
+            vendor_id: 0x1038,
+            product_id: 0x1880,
+            endpoint: 2,
+            battery_kind: Some(BatteryKind::DirectAerox { command: 0x92 }),
         }),
         (0x1038, 0x1706) => Some(MouseProfile {
             name: "SteelSeries Rival 95",
@@ -580,7 +587,7 @@ mod tests {
             0x1836, 0x183a, 0x187a, 0x1838, 0x1878, 0x1890, 0x1892, 0x1850, 0x1854, 0x185e,
             0x1862, 0x1852, 0x185c, 0x1860, 0x185a, 0x1876, 0x1858, 0x1874, 0x137a, 0x1366,
             0x1378, 0x182e, 0x182a, 0x1856, 0x184d, 0x182c, 0x1842, 0x184a, 0x1840, 0x1848,
-            0x1824, 0x184c, 0x1870, 0x1830, 0x1872, 0x183c, 0x183e, 0x1706, 0x1707, 0x1704,
+            0x1824, 0x184c, 0x1870, 0x1830, 0x1872, 0x183c, 0x183e, 0x1880, 0x1706, 0x1707, 0x1704,
             0x1708, 0x1702, 0x170a, 0x170b, 0x170c, 0x1814, 0x1729, 0x1816, 0x1384, 0x1392,
             0x1710, 0x1712, 0x171c, 0x1394, 0x171a, 0x1716, 0x1714, 0x1718, 0x1810, 0x1720,
             0x171e, 0x1736, 0x170e, 0x1724, 0x172e, 0x172b, 0x1726, 0x1700, 0x1730, 0x1722,
@@ -607,6 +614,7 @@ mod tests {
             0x1848, // Prime Mini Wireless 2.4GHz
             0x1830, // Rival 3 Wireless 2.4GHz
             0x1872, // Rival 3 Wireless Gen 2 2.4GHz
+            0x1880, // Rival Pro (UWB wireless receiver)
             0x1726, // Rival 650 Wireless 2.4GHz
         ];
 

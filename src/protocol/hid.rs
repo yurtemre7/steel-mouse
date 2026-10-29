@@ -247,8 +247,8 @@ impl MouseManager {
                     req_64[0] = 0x00;
                     req_64[1] = command;
 
-                    let write_ok = device.write(&req_64).is_ok()
-                        || device.write(&[0x00, command]).is_ok()
+                    let write_ok = device.write(&[0x00, command]).is_ok()
+                        || device.write(&req_64).is_ok()
                         || device.send_feature_report(&[0x00, command]).is_ok();
 
                     if !write_ok {
@@ -443,6 +443,9 @@ impl MouseManager {
         if let Some(res) = Self::query_device_battery(device, BatteryKind::DirectAerox { command: 0xD2 }) {
             return Some(res);
         }
+        if let Some(res) = Self::query_device_battery(device, BatteryKind::DirectAerox { command: 0x92 }) {
+            return Some(res);
+        }
         if let Some(res) = Self::query_device_battery(device, BatteryKind::AeroxPrime { command: 0xD2 }) {
             return Some(res);
         }
@@ -502,6 +505,18 @@ mod tests {
         let decoded = MouseManager::decode_direct_aerox_response(&res_72_charging).expect("Should decode 72% charging");
         assert_eq!(decoded.0, Some(72));
         assert_eq!(decoded.1, true);
+
+        // Rival Pro (0x1880) response format: [0x92, 0x00, <MOUSE_%>, <FLAG>, <SPARE_BATTERY_%>]
+        let res_rival_pro = [0x92u8, 0x00, 29, 0x01, 100];
+        let decoded = MouseManager::decode_direct_aerox_response(&res_rival_pro).expect("Should decode Rival Pro 29%");
+        assert_eq!(decoded.0, Some(29));
+        assert_eq!(decoded.1, false);
+
+        // Rival Pro with Report ID prefix on Windows: [0x00, 0x92, 0x00, <MOUSE_%>, <FLAG>, <SPARE_BATTERY_%>]
+        let res_rival_pro_win = [0x00u8, 0x92, 0x00, 4, 0x01, 100];
+        let decoded = MouseManager::decode_direct_aerox_response(&res_rival_pro_win).expect("Should decode Rival Pro 4%");
+        assert_eq!(decoded.0, Some(4));
+        assert_eq!(decoded.1, false);
     }
 
     #[test]
