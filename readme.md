@@ -1,43 +1,44 @@
 # SteelMouse ⚡
 
-**SteelMouse** is a lightweight, cross-platform system tray application (Windows & macOS) that retrieves the battery level and charging status of your SteelSeries gaming mouse and displays it directly in your taskbar / menu bar.
+**SteelMouse** is a lightweight, native system tray application for **Windows** and **macOS** that queries your wireless SteelSeries gaming mouse directly over USB HID and displays its live battery level and charging status in your taskbar or menu bar—without needing SteelSeries GG running in the background.
 
 ![System Tray Image of SteelMouse](assets/image.png)
 
 ## 🌟 Key Features
 
-- **⚡ Ultra-Lightweight & Fast**: Written natively in **Rust** (~2.1 MB executable, <10 MB RAM, <10 ms startup time).
-- **🖥️ Cross-Platform**: Supports **Windows** (Win32 Tray) and **macOS** (Apple Silicon & Intel Menu Bar).
-- **🎨 Dual Display Modes**:
-  - **Hover Mode**: Clean battery graphic indicator in system tray with percentage tooltip.
-  - **Icon Mode**: Dynamic percentage numbers drawn directly onto the system tray icon.
-- **🔄 Configurable Refresh Interval**: Select refresh rate (1 min, 5 min, 10 min, 30 min, 1 hr) with instant zero-latency updates.
-- **🖱️ 78+ Devices Supported**: Includes device configurations and USB HID battery parsing rules for Aerox, Prime, and Rival series.
+- **⚡ Native & Ultra-Lightweight**: Written in **Rust** (~2.1 MB standalone executable, <10 MB RAM, <10 ms startup time).
+- **🖥️ Cross-Platform**: Supports **Windows** (Win32 System Tray) and **macOS** (Apple Silicon & Intel Menu Bar).
+- **🎨 Dual Tray Display Modes**:
+  - **Hover Tooltip Mode**: Clean color-coded battery fill icon in the tray with percentage shown on hover.
+  - **Percentage Number Mode**: Renders the live battery percentage number directly onto the tray icon.
+- **🔄 Configurable Polling & Autostart**: Choose background refresh intervals (`1 min`, `5 min`, `10 min`, `30 min`, `1 hr`), trigger instant manual refreshes, and toggle **Start Automatically on Login** directly from the tray menu.
+- **🔍 Built-In Mouse Analyzer & Issue Generator**: Includes an interactive analyzer tool (`🔍 Analyze / Report Unsupported Mouse...` in the tray menu or `steelmouse --analyze`) that scans SteelSeries USB HID interfaces, matches responses against your current battery percentage, generates a ready-to-paste `MouseProfile` config, and provides a pre-filled GitHub issue link.
 
 ---
 
-## 💻 Tested & Working Devices
+## 💻 Supported Wireless Mice
 
-- SteelSeries Aerox 3 Wireless (Wired & 2.4G mode)
-- SteelSeries Aerox 3 Gen 2 Wireless (Wired & 2.4G mode)
-- SteelSeries Aerox 5 Wireless (Wired & 2.4G mode)
-- SteelSeries Aerox 9 Wireless (Wired & 2.4G mode)
-- SteelSeries Prime Wireless & Prime Mini Wireless
-- SteelSeries Rival 3 Wireless (Gen 1 & Gen 2)
-- SteelSeries Rival 650 Wireless
-- SteelSeries Rival Pro Wireless
+SteelMouse includes protocol profiles and USB HID decoders for 75+ SteelSeries device IDs, including:
+
+- **SteelSeries Aerox 3 Wireless** (Gen 1, Gen 2, & CS2 Dragon Lore Edition — Wired & 2.4 GHz modes)
+- **SteelSeries Aerox 5 Wireless** (Standard, Destiny 2, & Diablo IV Editions — Wired & 2.4 GHz modes)
+- **SteelSeries Aerox 9 Wireless** (Standard & WoW Editions — Wired & 2.4 GHz modes)
+- **SteelSeries Prime Wireless & Prime Mini Wireless** (Wired & 2.4 GHz modes)
+- **SteelSeries Rival 3 Wireless** (Gen 1 & Gen 2 — 2.4 GHz mode)
+- **SteelSeries Rival 650 Wireless** (Wired & 2.4 GHz modes)
+- **SteelSeries Rival Pro** (UWB Wireless Receiver)
 
 ---
 
 ## 🚀 Installation
 
-### Windows (Recommended)
-1. Download the latest installer `SteelMouse_Rust_Setup.exe` from the [Releases](https://github.com/yurtemre7/steel-mouse/releases/) page.
-2. Run the installer. It will install the application and add a shortcut to your Startup folder.
+### Windows
+1. Download the latest installer `SteelMouse_Rust_Setup.exe` (or the portable `steelmouse-windows-x64.zip`) from the [Releases](https://github.com/yurtemre7/steel-mouse/releases/) page.
+2. Run the installer. It installs SteelMouse in user space (no administrator prompt required) and can optionally add a Startup shortcut.
 
 ### macOS (Apple Silicon & Intel)
-1. Download `steelmouse-macos-arm64` (Apple Silicon M1-M4) or `steelmouse-macos-x64` (Intel Mac) from [Releases](https://github.com/yurtemre7/steel-mouse/releases/).
-2. Make it executable and run:
+1. Download `steelmouse-macos-arm64` (Apple Silicon M1–M4) or `steelmouse-macos-x64` (Intel Mac) from [Releases](https://github.com/yurtemre7/steel-mouse/releases/).
+2. Make the binary executable and launch it:
    ```bash
    chmod +x steelmouse-macos-arm64
    ./steelmouse-macos-arm64
@@ -45,9 +46,19 @@
 
 ---
 
-## 🛠️ Building from Source
+## 🔍 Adding or Reporting a New Mouse
 
-### Native Rust (Primary / Recommended)
+If your SteelSeries wireless mouse is not yet supported or reports an inaccurate percentage:
+
+1. Right-click the SteelMouse tray icon and click **`🔍 Analyze / Report Unsupported Mouse...`** (or run `steelmouse --analyze`).
+2. *(Optional)* Enter the battery percentage currently displayed in **SteelSeries GG** (`0–100`) so the analyzer can pinpoint the exact response byte and scaling formula.
+3. Click **`🔍 Scan & Analyze Mouse`**.
+4. Click the generated **`https://github.com/yurtemre7/steel-mouse/issues/new`** link to open a pre-filled GitHub issue in your browser (or copy the generated Markdown report / attach the exported `steelmouse_diagnostic_*.json` file).
+
+---
+
+## 🛠️ Building from Source & CLI Options
+
 Requires the [Rust toolchain](https://rustup.rs/):
 
 ```bash
@@ -55,13 +66,19 @@ Requires the [Rust toolchain](https://rustup.rs/):
 git clone https://github.com/yurtemre7/steel-mouse.git
 cd steel-mouse
 
-# Run unit test suite (78+ devices & HID response decoders)
+# Run the unit and hardware fixture test suite
 cargo test
 
-# Run in mock testing mode
+# Run in mock mouse mode (for UI testing without hardware)
 cargo run -- --mock
 
-# Build production release binary (~2.1 MB)
+# Launch the interactive Mouse Analyzer & Issue Generator window
+cargo run -- --analyze
+
+# Record a JSON diagnostic report from the command line
+cargo run -- --record --battery 85
+
+# Build production release binary
 cargo build --release
 ```
 
@@ -70,8 +87,8 @@ cargo build --release
 ## 🤝 Acknowledgements
 
 - [DeveloperX19](https://github.com/DeveloperX19) for the icon art license.
-- [flozz](https://github.com/flozz) for the `rivalcfg` library and reverse-engineered SteelSeries HID protocols.
-- [Pyenb](https://github.com/Pyenb), [T-solidus-T](https://github.com/T-solidus-T), and [bossman90](https://github.com/bossman90) for contributions to the original Python codebase.
+- [flozz](https://github.com/flozz) for [`rivalcfg`](https://github.com/flozz/rivalcfg) and reverse-engineered SteelSeries USB HID protocols.
+- [Pyenb](https://github.com/Pyenb), [T-solidus-T](https://github.com/T-solidus-T), and [bossman90](https://github.com/bossman90) for early contributions to the project.
 
 ## 📄 License
 
