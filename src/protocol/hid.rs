@@ -78,6 +78,30 @@ pub fn get_interface_number(info: &DeviceInfo) -> i32 {
     -1
 }
 
+pub fn is_non_mouse_product(product_name: Option<&str>) -> bool {
+    let Some(name) = product_name else {
+        return false;
+    };
+    let lower = name.to_lowercase();
+    const NON_MOUSE_KEYWORDS: &[&str] = &[
+        "apex",
+        "arctis",
+        "nova",
+        "alias",
+        "arena",
+        "stratus",
+        "nimbus",
+        "gamedac",
+        "qck",
+        "keyboard",
+        "headset",
+        "microphone",
+        "speaker",
+        "controller",
+    ];
+    NON_MOUSE_KEYWORDS.iter().any(|kw| lower.contains(kw))
+}
+
 impl MouseManager {
     pub fn new(mock_mode: bool) -> Self {
         log::log(&format!("MouseManager::new(mock_mode={})", mock_mode));
@@ -158,6 +182,10 @@ impl MouseManager {
         };
 
         let mut steelseries_count = 0;
+        let mut known_wireless_mouse_found = false;
+
+        // Pass 1: Check known SteelSeries mouse profiles first so unprofiled peripherals
+        // (such as keyboards or headsets enumerated earlier on the USB bus) never pre-empt them.
         for device_info in api.device_list() {
             if device_info.vendor_id() == STEELSERIES_VENDOR_ID {
                 steelseries_count += 1;
@@ -168,15 +196,15 @@ impl MouseManager {
                     pid, iface, device_info.path(), device_info.product_string()
                 ));
 
-                let profile = devices::get_profile(STEELSERIES_VENDOR_ID, pid);
-
-                if let Some(prof) = profile {
+                if let Some(prof) = devices::get_profile(STEELSERIES_VENDOR_ID, pid) {
                     if let Some(kind) = prof.battery_kind {
                         // Skip non-matching interfaces to prevent OS driver locks and timeouts
                         if prof.endpoint != 0 && iface >= 0 && iface != prof.endpoint as i32 {
                             log::log(&format!("    Skipping: endpoint mismatch (need {}, got {})", prof.endpoint, iface));
                             continue;
                         }
+
+                        known_wireless_mouse_found = true;
 
                         match device_info.open_device(api) {
                             Err(e) => {
@@ -204,9 +232,30 @@ impl MouseManager {
                     } else {
                         log::log("    Profile found but no battery_kind (wired or unsupported)");
                     }
-                } else {
-                    // Fallback for unlisted SteelSeries devices
-                    log::log("    No profile - trying generic fallback");
+                }
+            }
+        }
+
+        // Pass 2: Fallback for unlisted SteelSeries mice only when no known wireless mouse
+        // profile was found on the bus, and never on non-mouse peripherals (e.g. Apex keyboards).
+        if !known_wireless_mouse_found {
+            for device_info in api.device_list() {
+                if device_info.vendor_id() == STEELSERIES_VENDOR_ID {
+                    let pid = device_info.product_id();
+                    if devices::get_profile(STEELSERIES_VENDOR_ID, pid).is_some() {
+                        continue;
+                    }
+
+                    let prod_str = device_info.product_string();
+                    if is_non_mouse_product(prod_str) {
+                        log::log(&format!(
+                            "    Skipping generic fallback for non-mouse peripheral PID=0x{:04x} product={:?}",
+                            pid, prod_str
+                        ));
+                        continue;
+                    }
+
+                    log::log(&format!("    No profile for PID=0x{:04x} - trying generic fallback", pid));
                     if let Ok(device) = device_info.open_device(api) {
                         if let Some((level, is_charging)) = Self::query_generic_fallback(&device) {
                             log::log(&format!("    Fallback SUCCESS level={:?} charging={}", level, is_charging));
@@ -214,8 +263,7 @@ impl MouseManager {
                                 self.tracker.add_sample(lvl, is_charging);
                             }
                             let estimated_time = self.tracker.estimate_time();
-                            let name = device_info
-                                .product_string()
+                            let name = prod_str
                                 .unwrap_or("SteelSeries Mouse")
                                 .to_string();
                             return Ok(BatteryInfo { name, level, is_charging, estimated_time });
@@ -358,12 +406,18 @@ impl MouseManager {
 
         let is_charging = (battery_byte & CHARGING_FLAG) != 0;
         let raw_val = battery_byte & !CHARGING_FLAG;
+        if raw_val == 0 || raw_val > 100 {
+            log::log(&format!(
+                "decode_aerox_prime: invalid battery_byte=0x{:02X} (raw_val={}), skipping",
+                battery_byte, raw_val
+            ));
+            return None;
+        }
+
         let level = if raw_val > 21 {
-            Some(raw_val.min(100))
-        } else if raw_val > 0 {
-            Some(((raw_val.saturating_sub(1)) as u16 * 5).min(100) as u8)
+            Some(raw_val)
         } else {
-            None
+            Some(((raw_val.saturating_sub(1)) as u16 * 5).min(100) as u8)
         };
 
         log::log(&format!("decode_aerox_prime: battery_byte=0x{:02X} raw_val={} level={:?} charging={}", battery_byte, raw_val, level, is_charging));
@@ -391,7 +445,15 @@ impl MouseManager {
 
         let is_charging = (battery_byte & CHARGING_FLAG) != 0;
         let raw_val = battery_byte & !CHARGING_FLAG;
-        let level = Some(raw_val.min(100));
+        if raw_val == 0 || raw_val > 100 {
+            log::log(&format!(
+                "decode_direct_aerox: invalid battery_byte=0x{:02X} (raw_val={}), skipping",
+                battery_byte, raw_val
+            ));
+            return None;
+        }
+
+        let level = Some(raw_val);
 
         log::log(&format!("decode_direct_aerox: battery_byte=0x{:02X} raw_val={} level={:?} charging={}", battery_byte, raw_val, level, is_charging));
         Some((level, is_charging))
@@ -432,10 +494,10 @@ impl MouseManager {
             (res[0], false)
         };
 
-        // Battery percentage must be between 0 and 100.
-        // If level_byte > 100, this is not a valid battery packet.
-        if level_byte > 100 {
-            log::log(&format!("decode_rival3_650: invalid level_byte={} (> 100), skipping", level_byte));
+        // Battery percentage must be between 1 and 100.
+        // If level_byte == 0 (sleeping/empty echo) or > 100 (NACK/invalid), skip.
+        if level_byte == 0 || level_byte > 100 {
+            log::log(&format!("decode_rival3_650: invalid level_byte={} (must be 1..=100), skipping", level_byte));
             return None;
         }
 
@@ -521,6 +583,43 @@ mod tests {
         let decoded = MouseManager::decode_direct_aerox_response(&res_rival_pro_win).expect("Should decode Rival Pro 4%");
         assert_eq!(decoded.0, Some(4));
         assert_eq!(decoded.1, false);
+    }
+
+    #[test]
+    fn test_reject_keyboard_nack_and_invalid_bytes_issue_23() {
+        // Wired Apex Pro TKL Gen 3 (0x1038:0x1642) echoes/NACKs 0xD2 with [0xD2, 0xFF, 0x00, 0x00, ...]
+        let apex_nack = [0xD2u8, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        assert!(MouseManager::decode_direct_aerox_response(&apex_nack).is_none());
+        assert!(MouseManager::decode_aerox_prime_response(&apex_nack).is_none());
+
+        // Windows report-ID prefixed NACK or padded NACK variants
+        let apex_nack_win = [0x00u8, 0xD2, 0xFF, 0x00, 0x00];
+        assert!(MouseManager::decode_direct_aerox_response(&apex_nack_win).is_none());
+        assert!(MouseManager::decode_aerox_prime_response(&apex_nack_win).is_none());
+
+        let apex_nack_padded = [0xD2u8, 0x00, 0xFF, 0x00];
+        assert!(MouseManager::decode_direct_aerox_response(&apex_nack_padded).is_none());
+        assert!(MouseManager::decode_aerox_prime_response(&apex_nack_padded).is_none());
+
+        // Out-of-range raw_val (e.g. 0x7F = 127, 0x65 = 101) and charging-bit-only (0x80 -> raw_val = 0)
+        assert!(MouseManager::decode_direct_aerox_response(&[0xD2, 0x7F, 0x00]).is_none());
+        assert!(MouseManager::decode_aerox_prime_response(&[0xD2, 0x7F, 0x00]).is_none());
+        assert!(MouseManager::decode_direct_aerox_response(&[0xD2, 101, 0x00]).is_none());
+        assert!(MouseManager::decode_aerox_prime_response(&[0xD2, 101, 0x00]).is_none());
+        assert!(MouseManager::decode_direct_aerox_response(&[0xD2, 0x80, 0x00]).is_none());
+        assert!(MouseManager::decode_aerox_prime_response(&[0xD2, 0x80, 0x00]).is_none());
+    }
+
+    #[test]
+    fn test_is_non_mouse_product_filter() {
+        assert!(is_non_mouse_product(Some("SteelSeries Apex Pro TKL Gen 3")));
+        assert!(is_non_mouse_product(Some("Apex 7 TKL")));
+        assert!(is_non_mouse_product(Some("SteelSeries Arctis Nova Pro Wireless")));
+        assert!(is_non_mouse_product(Some("SteelSeries QcK Prism")));
+        assert!(!is_non_mouse_product(Some("SteelSeries Aerox 3 Wireless")));
+        assert!(!is_non_mouse_product(Some("SteelSeries Rival 3 Wireless")));
+        assert!(!is_non_mouse_product(Some("SteelSeries Prime Mini Wireless")));
+        assert!(!is_non_mouse_product(None));
     }
 
     #[test]

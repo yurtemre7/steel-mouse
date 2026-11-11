@@ -7,7 +7,7 @@ use std::time::Duration;
 use chrono::Utc;
 use crate::log;
 use crate::protocol::devices;
-use crate::protocol::hid::{get_interface_number, MouseManager};
+use crate::protocol::hid::{get_interface_number, is_non_mouse_product, MouseManager};
 
 #[derive(Debug, Clone)]
 pub struct CandidateMatch {
@@ -186,7 +186,7 @@ pub fn run_diagnostic_with_battery(api: &mut HidApi, known_battery: Option<u8>) 
                                             "delta_from_known": delta,
                                         }));
 
-                                        if attempt == 0 {
+                                        if attempt == 0 && !is_non_mouse_product(Some(&prod)) {
                                             all_candidates.push(CandidateMatch {
                                                 vendor_id: 0x1038,
                                                 product_id: pid,
@@ -489,9 +489,13 @@ pub fn open_file_in_file_manager(path: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static HID_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_diagnostic_report_json_schema() {
+        let _guard = HID_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         if let Ok(mut api) = HidApi::new() {
             let report = run_diagnostic(&mut api);
             assert!(report.get("steelmouse_version").is_some());
@@ -523,10 +527,15 @@ mod tests {
             .expect("Should find exact match for 85% on AeroxPrime scale");
         assert_eq!(aerox_match.0, "BatteryKind::AeroxPrime { command: 0xD2 }");
         assert_eq!(aerox_match.1, 85);
+
+        // Issue #23: Apex Pro TKL Gen 3 keyboard NACK [0xD2, 0xFF, 0, 0] must produce zero candidates
+        let raw_apex_nack = [0xD2u8, 0xFF, 0x00, 0x00];
+        assert!(analyze_response_bytes(0xD2, &raw_apex_nack, None).is_empty());
     }
 
     #[test]
     fn test_save_diagnostic_file_custom_path() {
+        let _guard = HID_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let temp_dir = std::env::temp_dir();
         let target_file = temp_dir.join("steelmouse_test_diag.json");
         if target_file.exists() {
