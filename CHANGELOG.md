@@ -1,12 +1,23 @@
 # ⚡ SteelMouse Changelog
 
-> **Current Version:** `v2.6.0`  
+> **Current Version:** `v2.6.1`  
 > All notable changes to SteelMouse are automatically documented in this file based on release tags and git commit history.
+
+## [v2.6.1](https://github.com/yurtemre7/steel-mouse/releases/tag/v2.6.1) - 2026-11-12
+
+### 🐛 Bug Fixes
+
+- fix: reject keyboard NACK 0xFF responses and prioritize known mice over non-mouse peripherals (fixes #23) ([`e7059e4`](https://github.com/yurtemre7/steel-mouse/commit/e7059e4))
+### 📝 Documentation & Chores
+
+- chore: improve readme.md ([`7b35b39`](https://github.com/yurtemre7/steel-mouse/commit/7b35b39))
+---
 
 ## [v2.6.0](https://github.com/yurtemre7/steel-mouse/releases/tag/v2.6.0) - 2026-10-29
 
 ### 🚀 Features
 
+- release: v2.6.0 ([`538c852`](https://github.com/yurtemre7/steel-mouse/commit/538c852))
 - feat: add new mouse analysis tool ([`933384b`](https://github.com/yurtemre7/steel-mouse/commit/933384b))
 - feat: add rival pro support ([`bcbcdc0`](https://github.com/yurtemre7/steel-mouse/commit/bcbcdc0))
 - release: v2.5.1 ([`eaa3096`](https://github.com/yurtemre7/steel-mouse/commit/eaa3096))

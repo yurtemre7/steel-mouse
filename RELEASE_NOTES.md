@@ -1,8 +1,6 @@
-### 🚀 Features
+### 🐛 Bug Fixes
 
-- feat: add new mouse analysis tool ([`933384b`](https://github.com/yurtemre7/steel-mouse/commit/933384b))
-- feat: add rival pro support ([`bcbcdc0`](https://github.com/yurtemre7/steel-mouse/commit/bcbcdc0))
-- release: v2.5.1 ([`eaa3096`](https://github.com/yurtemre7/steel-mouse/commit/eaa3096))
+- fix: reject keyboard NACK 0xFF responses and prioritize known mice over non-mouse peripherals (fixes #23) ([`e7059e4`](https://github.com/yurtemre7/steel-mouse/commit/e7059e4))
 ### 📝 Documentation & Chores
 
-- chore: update app and remove python project ([`4e32eaf`](https://github.com/yurtemre7/steel-mouse/commit/4e32eaf))
+- chore: improve readme.md ([`7b35b39`](https://github.com/yurtemre7/steel-mouse/commit/7b35b39))
