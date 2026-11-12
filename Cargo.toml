@@ -1,9 +1,11 @@
 [package]
 name = "steelmouse"
-version = "2.6.1"
+version = "2.6.2"
 edition = "2021"
 authors = ["SteelMouse Contributors"]
 description = "Native SteelSeries mouse battery system tray monitor"
+license = "MIT"
+repository = "https://github.com/yurtemre7/steel-mouse"
 
 [dependencies]
 hidapi = "2.6"

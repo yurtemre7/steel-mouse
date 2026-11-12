@@ -7,12 +7,46 @@ on:
       - "main"
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - "main"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libusb-1.0-0-dev libayatana-appindicator3-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Run Build
+        run: cargo build
+
+      - name: Run Unit Tests
+        run: cargo test
+
   build-rust-windows:
     name: Build Rust Native Windows App & Installer
     if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'release:') || startsWith(github.ref, 'refs/tags/')
@@ -109,12 +143,13 @@ jobs:
 
       - name: Extract Tag Name from Cargo.toml, Commit Message or Ref
         id: release_tag
+        env:
+          RAW_MSG: ${{ github.event.head_commit.message }}
         run: |
           CARGO_VER="v$(grep '^version =' Cargo.toml | head -n1 | cut -d '"' -f2)"
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG_NAME="${{ github.ref_name }}"
           else
-            RAW_MSG="${{ github.event.head_commit.message }}"
             TAG_NAME=$(echo "$RAW_MSG" | sed -n 's/^release:\s*//p' | head -n1 | tr -d ' ')
             if [ -z "$TAG_NAME" ]; then
               TAG_NAME="$CARGO_VER"
