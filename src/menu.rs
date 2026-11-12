@@ -4,6 +4,7 @@ use muda::{
 use std::collections::HashMap;
 use crate::config::DisplayMode;
 use crate::hid::BatteryInfo;
+use crate::log;
 
 pub struct TrayMenu {
     pub menu: Menu,
@@ -76,7 +77,9 @@ impl TrayMenu {
         let mut interval_items = HashMap::new();
         for (secs, label) in intervals {
             let item = CheckMenuItem::new(label, true, secs == time_delta, None);
-            interval_submenu.append(&item).unwrap();
+            if let Err(e) = interval_submenu.append(&item) {
+                log::log(&format!("Failed to append interval item to submenu: {}", e));
+            }
             interval_items.insert(secs, item);
         }
 
@@ -95,8 +98,12 @@ impl TrayMenu {
             None,
         );
 
-        mode_submenu.append(&mode_hover_item).unwrap();
-        mode_submenu.append(&mode_icon_item).unwrap();
+        if let Err(e) = mode_submenu.append(&mode_hover_item) {
+            log::log(&format!("Failed to append hover item to submenu: {}", e));
+        }
+        if let Err(e) = mode_submenu.append(&mode_icon_item) {
+            log::log(&format!("Failed to append icon item to submenu: {}", e));
+        }
 
         // 5. Autostart Option Toggle
         let is_autostart = crate::autostart::is_autostart_enabled();
@@ -109,18 +116,42 @@ impl TrayMenu {
         let quit_item = MenuItem::new("Quit", true, None);
 
         // Build Menu Hierarchy
-        menu.append(&name_item).unwrap();
-        menu.append(&battery_item).unwrap();
-        menu.append(&status_item).unwrap();
-        menu.append(&last_update_item).unwrap();
-        menu.append(&refresh_item).unwrap();
-        menu.append(&PredefinedMenuItem::separator()).unwrap();
-        menu.append(&interval_submenu).unwrap();
-        menu.append(&mode_submenu).unwrap();
-        menu.append(&autostart_item).unwrap();
-        menu.append(&export_diag_item).unwrap();
-        menu.append(&PredefinedMenuItem::separator()).unwrap();
-        menu.append(&quit_item).unwrap();
+        if let Err(e) = menu.append(&name_item) {
+            log::log(&format!("Failed to append name item to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&battery_item) {
+            log::log(&format!("Failed to append battery item to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&status_item) {
+            log::log(&format!("Failed to append status item to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&last_update_item) {
+            log::log(&format!("Failed to append last update item to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&refresh_item) {
+            log::log(&format!("Failed to append refresh item to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&PredefinedMenuItem::separator()) {
+            log::log(&format!("Failed to append separator to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&interval_submenu) {
+            log::log(&format!("Failed to append interval submenu to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&mode_submenu) {
+            log::log(&format!("Failed to append mode submenu to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&autostart_item) {
+            log::log(&format!("Failed to append autostart item to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&export_diag_item) {
+            log::log(&format!("Failed to append export diag item to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&PredefinedMenuItem::separator()) {
+            log::log(&format!("Failed to append separator to menu: {}", e));
+        }
+        if let Err(e) = menu.append(&quit_item) {
+            log::log(&format!("Failed to append quit item to menu: {}", e));
+        }
 
         Self {
             menu,
