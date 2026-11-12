@@ -31,7 +31,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libudev-dev libusb-1.0-0-dev libayatana-appindicator3-dev
+          sudo apt-get install -y libudev-dev libusb-1.0-0-dev libayatana-appindicator3-dev libxdo-dev
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
