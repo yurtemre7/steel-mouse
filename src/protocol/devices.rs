@@ -486,14 +486,14 @@ pub fn get_profile(vendor_id: u16, product_id: u16) -> Option<MouseProfile> {
             name: "SteelSeries Rival 650 Wireless (wired mode)",
             vendor_id: 0x1038,
             product_id: 0x172b,
-            endpoint: 3,
+            endpoint: 0,
             battery_kind: Some(BatteryKind::Rival3Or650),
         }),
         (0x1038, 0x1726) => Some(MouseProfile {
             name: "SteelSeries Rival 650 Wireless (2.4 GHz wireless mode)",
             vendor_id: 0x1038,
             product_id: 0x1726,
-            endpoint: 3,
+            endpoint: 0,
             battery_kind: Some(BatteryKind::Rival3Or650),
         }),
         (0x1038, 0x1700) => Some(MouseProfile {
@@ -626,6 +626,17 @@ mod tests {
                 pid,
                 prof.name
             );
+        }
+    }
+
+    #[test]
+    fn test_rival650_uses_interface_0() {
+        // rivalcfg and the diagnostic capture in issue #24 both show the Rival 650
+        // answering the 0xAA 0x01 battery command on HID interface 0, not 3.
+        for pid in [0x172b, 0x1726] {
+            let prof = get_profile(0x1038, pid).expect("Profile missing");
+            assert_eq!(prof.endpoint, 0, "PID 0x{:04x} ({}) should use interface 0", pid, prof.name);
+            assert_eq!(prof.battery_kind, Some(BatteryKind::Rival3Or650));
         }
     }
 

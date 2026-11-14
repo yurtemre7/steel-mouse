@@ -198,8 +198,10 @@ impl MouseManager {
 
                 if let Some(prof) = devices::get_profile(STEELSERIES_VENDOR_ID, pid) {
                     if let Some(kind) = prof.battery_kind {
-                        // Skip non-matching interfaces to prevent OS driver locks and timeouts
-                        if prof.endpoint != 0 && iface >= 0 && iface != prof.endpoint as i32 {
+                        // Skip non-matching interfaces to prevent OS driver locks and timeouts.
+                        // Interface 0 is a real interface (Rival 650), so match it strictly too;
+                        // only skip the check when the OS doesn't report an interface number.
+                        if iface >= 0 && iface != prof.endpoint as i32 {
                             log::log(&format!("    Skipping: endpoint mismatch (need {}, got {})", prof.endpoint, iface));
                             continue;
                         }
@@ -697,6 +699,16 @@ mod tests {
         // Out of range level should return None
         let res_invalid = [0x00, 150, 0, 0];
         assert!(MouseManager::decode_rival3_650_response(&res_invalid).is_none());
+    }
+
+    #[test]
+    fn test_decode_rival650_issue24_capture() {
+        // Raw 0xAA 0x01 response from a Rival 650 Wireless (1038:1726) on interface 0, issue #24
+        let res = [0x5A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let decoded = MouseManager::decode_rival3_650_response(&res).expect("Should decode");
+        assert_eq!(decoded.0, Some(90));
+        assert_eq!(decoded.1, false);
     }
 
     #[test]
