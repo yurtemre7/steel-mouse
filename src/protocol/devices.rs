@@ -486,14 +486,14 @@ pub fn get_profile(vendor_id: u16, product_id: u16) -> Option<MouseProfile> {
             name: "SteelSeries Rival 650 Wireless (wired mode)",
             vendor_id: 0x1038,
             product_id: 0x172b,
-            endpoint: 3,
+            endpoint: 0,
             battery_kind: Some(BatteryKind::Rival3Or650),
         }),
         (0x1038, 0x1726) => Some(MouseProfile {
             name: "SteelSeries Rival 650 Wireless (2.4 GHz wireless mode)",
             vendor_id: 0x1038,
             product_id: 0x1726,
-            endpoint: 3,
+            endpoint: 0,
             battery_kind: Some(BatteryKind::Rival3Or650),
         }),
         (0x1038, 0x1700) => Some(MouseProfile {
@@ -626,6 +626,13 @@ mod tests {
                 pid,
                 prof.name
             );
+        }
+
+        // Issue #24: Rival 650 Wireless (0x1726 wireless, 0x172b wired) reports battery on interface 0
+        for &pid in &[0x1726u16, 0x172bu16] {
+            let prof = get_profile(0x1038, pid).expect("Rival 650 profile missing");
+            assert_eq!(prof.endpoint, 0);
+            assert_eq!(prof.battery_kind, Some(BatteryKind::Rival3Or650));
         }
     }
 

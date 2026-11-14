@@ -199,7 +199,7 @@ impl MouseManager {
                 if let Some(prof) = devices::get_profile(STEELSERIES_VENDOR_ID, pid) {
                     if let Some(kind) = prof.battery_kind {
                         // Skip non-matching interfaces to prevent OS driver locks and timeouts
-                        if prof.endpoint != 0 && iface >= 0 && iface != prof.endpoint as i32 {
+                        if iface >= 0 && iface != prof.endpoint as i32 {
                             log::log(&format!("    Skipping: endpoint mismatch (need {}, got {})", prof.endpoint, iface));
                             continue;
                         }
@@ -674,6 +674,12 @@ mod tests {
         let decoded = MouseManager::decode_rival3_650_response(&res_90_charging).expect("Should decode");
         assert_eq!(decoded.0, Some(90));
         assert_eq!(decoded.1, true);
+
+        // Issue #24: Captured live from Rival 650 Wireless (1038:0x1726) Interface 0 Cmd 0xAA
+        let captured_rival650 = [0x5Au8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let decoded = MouseManager::decode_rival3_650_response(&captured_rival650).expect("Should decode Rival 650 90%");
+        assert_eq!(decoded.0, Some(90));
+        assert_eq!(decoded.1, false);
     }
 
     #[test]
