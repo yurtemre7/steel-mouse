@@ -1,10 +1,30 @@
 # ⚡ SteelMouse Changelog
 
-> **Current Version:** `v2.6.2`  
+> **Current Version:** `v2.6.4`  
 > All notable changes to SteelMouse are automatically documented in this file based on release tags and git commit history.
+
+## [v2.6.4](https://github.com/yurtemre7/steel-mouse/releases/tag/v2.6.4) - 2026-11-14
+
+### 🐛 Bug Fixes
+
+- fix: use interface 0 for Rival 650 Wireless (0x1726/0x172b) and enforce endpoint 0 matching (fixes #24) ([`fdf25af`](https://github.com/yurtemre7/steel-mouse/commit/fdf25af))
+---
+
+## [v2.6.3](https://github.com/yurtemre7/steel-mouse/releases/tag/v2.6.3) - 2026-11-12
+
+### 🚀 Features
+
+- release: v2.6.3 ([`0bdabc5`](https://github.com/yurtemre7/steel-mouse/commit/0bdabc5))
+### 🐛 Bug Fixes
+
+- fix(ci): install libxdo-dev on Linux ([`006f645`](https://github.com/yurtemre7/steel-mouse/commit/006f645))
+---
 
 ## [v2.6.2](https://github.com/yurtemre7/steel-mouse/releases/tag/v2.6.2) - 2026-11-12
 
+### 🚀 Features
+
+- release: v2.6.2 ([`e00f636`](https://github.com/yurtemre7/steel-mouse/commit/e00f636))
 ### 🐛 Bug Fixes
 
 - fix(autostart): escape plist exe path, propagate errors, harden menu appends ([`d8e9b32`](https://github.com/yurtemre7/steel-mouse/commit/d8e9b32))
