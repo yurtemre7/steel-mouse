@@ -190,15 +190,31 @@ impl eframe::App for AnalyzerApp {
                         }
                     });
                 } else if dev_count == 0 {
+                    let has_bluetooth_other = report
+                        .get("other_steelseries_devices")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter().any(|d| {
+                                d.get("bus_hint").and_then(|b| b.as_str()) == Some("Bluetooth")
+                            })
+                        })
+                        .unwrap_or(false);
                     ui.colored_label(
                         egui::Color32::from_rgb(255, 149, 0),
                         "⚠ No SteelSeries USB HID devices (VID 0x1038) were detected.",
                     );
                     if other_count > 0 {
-                        ui.label(format!(
-                            "Found {} non-USB / Bluetooth SteelSeries HID interface(s). SteelMouse requires the 2.4 GHz USB wireless dongle or wired USB connection (Bluetooth HID does not expose SteelSeries USB telemetry).",
-                            other_count
-                        ));
+                        if has_bluetooth_other {
+                            ui.label(format!(
+                                "Found {} non-0x1038 SteelSeries HID interface(s) (including Bluetooth). SteelMouse requires the 2.4 GHz USB wireless dongle or wired USB connection (Bluetooth HID does not expose SteelSeries USB telemetry).",
+                                other_count
+                            ));
+                        } else {
+                            ui.label(format!(
+                                "Found {} non-0x1038 SteelSeries HID interface(s). They are included in the diagnostic report below.",
+                                other_count
+                            ));
+                        }
                     } else {
                         ui.label(
                             "Make sure your mouse is connected via its 2.4 GHz USB dongle or USB cable (not Bluetooth), click a button to wake it, and click Scan & Analyze again.",

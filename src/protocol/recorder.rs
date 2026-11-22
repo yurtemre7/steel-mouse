@@ -501,13 +501,10 @@ pub fn save_diagnostic_file(custom_path: Option<&Path>) -> Result<PathBuf, Strin
     save_diagnostic_file_with_battery(custom_path, None).map(|(path, _)| path)
 }
 
-pub fn save_diagnostic_file_with_battery(
+pub fn write_diagnostic_report(
+    report: &Value,
     custom_path: Option<&Path>,
-    known_battery: Option<u8>,
-) -> Result<(PathBuf, Value), String> {
-    let mut api = HidApi::new().map_err(|e| format!("Failed to init HidApi: {}", e))?;
-    let report = run_diagnostic_with_battery(&mut api, known_battery);
-
+) -> Result<PathBuf, String> {
     let target_path = match custom_path {
         Some(p) => p.to_path_buf(),
         None => {
@@ -525,7 +522,7 @@ pub fn save_diagnostic_file_with_battery(
         }
     };
 
-    let formatted_json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+    let formatted_json = serde_json::to_string_pretty(report).map_err(|e| e.to_string())?;
     if let Some(parent) = target_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -536,21 +533,31 @@ pub fn save_diagnostic_file_with_battery(
         "Diagnostic report saved to {}",
         target_path.display()
     ));
+    Ok(target_path)
+}
+
+pub fn save_diagnostic_file_with_battery(
+    custom_path: Option<&Path>,
+    known_battery: Option<u8>,
+) -> Result<(PathBuf, Value), String> {
+    let mut api = HidApi::new().map_err(|e| format!("Failed to init HidApi: {}", e))?;
+    let report = run_diagnostic_with_battery(&mut api, known_battery);
+    let target_path = write_diagnostic_report(&report, custom_path)?;
     Ok((target_path, report))
 }
 
 pub fn open_file_in_file_manager(path: &Path) {
-    let path_str = path.to_string_lossy();
+    let _path_str = path.to_string_lossy();
     #[cfg(target_os = "windows")]
     {
         let _ = std::process::Command::new("explorer")
-            .args(&["/select,", &path_str])
+            .args(&["/select,", &_path_str])
             .spawn();
     }
     #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open")
-            .args(&["-R", &path_str])
+            .args(&["-R", &_path_str])
             .spawn();
     }
     #[cfg(target_os = "linux")]
@@ -612,19 +619,27 @@ mod tests {
 
     #[test]
     fn test_save_diagnostic_file_custom_path() {
-        let _guard = HID_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let temp_dir = std::env::temp_dir();
         let target_file = temp_dir.join("steelmouse_test_diag.json");
         if target_file.exists() {
             let _ = std::fs::remove_file(&target_file);
         }
 
-        if let Ok(saved_path) = save_diagnostic_file(Some(&target_file)) {
-            assert!(saved_path.exists());
-            let content = std::fs::read_to_string(&saved_path).unwrap();
-            assert!(content.contains("steelmouse_version"));
-            let _ = std::fs::remove_file(saved_path);
-        }
+        let sample_report = json!({
+            "steelmouse_version": env!("CARGO_PKG_VERSION"),
+            "os": env::consts::OS,
+            "arch": env::consts::ARCH,
+            "devices_found": 0,
+            "devices": [],
+            "other_steelseries_devices": []
+        });
+
+        let saved_path =
+            write_diagnostic_report(&sample_report, Some(&target_file)).expect("Should write JSON");
+        assert!(saved_path.exists());
+        let content = std::fs::read_to_string(&saved_path).unwrap();
+        assert!(content.contains("steelmouse_version"));
+        let _ = std::fs::remove_file(saved_path);
     }
 
     #[test]

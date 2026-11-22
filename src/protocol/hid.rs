@@ -59,6 +59,7 @@ pub struct MouseManager {
     api: Option<HidApi>,
     cached_device: Option<ActiveDevice>,
     last_known_battery: Option<BatteryInfo>,
+    last_known_product_id: Option<u16>,
     tracker: BatteryTracker,
 }
 
@@ -129,6 +130,7 @@ impl MouseManager {
             api,
             cached_device: None,
             last_known_battery: None,
+            last_known_product_id: None,
             tracker: BatteryTracker::new(),
         }
     }
@@ -198,6 +200,7 @@ impl MouseManager {
 
         let mut steelseries_count = 0;
         let mut known_wireless_mouse_found = false;
+        let mut found_wireless_pids: Vec<u16> = Vec::new();
 
         // Pass 1: Check known SteelSeries mouse profiles first so unprofiled peripherals
         // (such as keyboards or headsets enumerated earlier on the USB bus) never pre-empt them.
@@ -220,6 +223,9 @@ impl MouseManager {
                         }
 
                         known_wireless_mouse_found = true;
+                        if !found_wireless_pids.contains(&pid) {
+                            found_wireless_pids.push(pid);
+                        }
 
                         match device_info.open_device(api) {
                             Err(e) => {
@@ -247,6 +253,7 @@ impl MouseManager {
                                             is_sleeping: false,
                                         };
                                         self.last_known_battery = Some(info.clone());
+                                        self.last_known_product_id = Some(pid);
                                         return Ok(info);
                                     }
                                 }
@@ -297,6 +304,7 @@ impl MouseManager {
                                 is_sleeping: false,
                             };
                             self.last_known_battery = Some(info.clone());
+                            self.last_known_product_id = Some(pid);
                             return Ok(info);
                         }
                     }
@@ -304,13 +312,17 @@ impl MouseManager {
             }
         }
 
-        // If a known wireless mouse receiver is still connected on the USB bus and we have
-        // a previous live reading, preserve the last known battery level while the mouse is
-        // asleep or momentarily unreachable instead of flashing N/A with a red cross.
-        if known_wireless_mouse_found {
+        // If the same known wireless mouse receiver is still connected on the USB bus and we
+        // have a previous live reading for it, preserve the last known battery level while the
+        // mouse is asleep or momentarily unreachable instead of flashing N/A with a red cross.
+        let same_receiver_present = self
+            .last_known_product_id
+            .map_or(false, |pid| found_wireless_pids.contains(&pid));
+        if same_receiver_present {
             if let Some(last) = &self.last_known_battery {
                 log::log(&format!(
-                    "Known wireless receiver still present; preserving last known battery ({:?}%) as sleeping",
+                    "Known wireless receiver (PID=0x{:04x}) still present; preserving last known battery ({:?}%) as sleeping",
+                    self.last_known_product_id.unwrap_or(0),
                     last.level
                 ));
                 return Ok(BatteryInfo {
@@ -323,6 +335,7 @@ impl MouseManager {
             }
         } else {
             self.last_known_battery = None;
+            self.last_known_product_id = None;
         }
 
         let err = if steelseries_count == 0 {
