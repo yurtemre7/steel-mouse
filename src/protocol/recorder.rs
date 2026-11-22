@@ -108,6 +108,17 @@ pub fn analyze_response_bytes(
     interpretations
 }
 
+pub fn detect_bus_hint(path: &str) -> &'static str {
+    let lower = path.to_lowercase();
+    if lower.contains("bthenum") || lower.contains("bthle") || lower.contains("bluetooth") {
+        "Bluetooth"
+    } else if lower.contains("usb") || lower.contains("vid_") {
+        "USB"
+    } else {
+        "HID"
+    }
+}
+
 pub fn run_diagnostic(api: &mut HidApi) -> Value {
     run_diagnostic_with_battery(api, None)
 }
@@ -120,6 +131,7 @@ pub fn run_diagnostic_with_battery(api: &mut HidApi, known_battery: Option<u8>) 
     let _ = api.refresh_devices();
 
     let mut device_records = Vec::new();
+    let mut other_steelseries_devices = Vec::new();
     let mut all_candidates: Vec<CandidateMatch> = Vec::new();
     let mut count = 0;
 
@@ -156,6 +168,13 @@ pub fn run_diagnostic_with_battery(api: &mut HidApi, known_battery: Option<u8>) 
                         req[2] = 0x01;
                     }
 
+                    let mut req_65 = [0u8; 65];
+                    req_65[0] = 0x00;
+                    req_65[1] = cmd;
+                    if cmd == 0xAA {
+                        req_65[2] = 0x01;
+                    }
+
                     let short_req: &[u8] = if cmd == 0xAA {
                         &[0x00, 0xAA, 0x01]
                     } else {
@@ -163,6 +182,7 @@ pub fn run_diagnostic_with_battery(api: &mut HidApi, known_battery: Option<u8>) 
                     };
 
                     let write_ok = device.write(short_req).is_ok()
+                        || device.write(&req_65).is_ok()
                         || device.write(&req).is_ok()
                         || device.send_feature_report(short_req).is_ok();
 
@@ -266,6 +286,34 @@ pub fn run_diagnostic_with_battery(api: &mut HidApi, known_battery: Option<u8>) 
                 "path": path_str,
                 "probed_commands": probed_commands
             }));
+        } else {
+            let mfg = dev_info.manufacturer_string().unwrap_or("");
+            let prod = dev_info.product_string().unwrap_or("");
+            if mfg.to_lowercase().contains("steelseries")
+                || prod.to_lowercase().contains("steelseries")
+            {
+                let path_str = dev_info.path().to_string_lossy().to_string();
+                let bus_hint = detect_bus_hint(&path_str);
+                let resolved_iface = get_interface_number(dev_info);
+                log::log(&format!(
+                    "Diagnostic scan: found non-0x1038 SteelSeries device VID=0x{:04X} PID=0x{:04X} bus={} prod='{}'",
+                    dev_info.vendor_id(),
+                    dev_info.product_id(),
+                    bus_hint,
+                    prod
+                ));
+                other_steelseries_devices.push(json!({
+                    "vendor_id": format!("0x{:04X}", dev_info.vendor_id()),
+                    "product_id": format!("0x{:04X}", dev_info.product_id()),
+                    "manufacturer": mfg,
+                    "product_name": prod,
+                    "interface": resolved_iface,
+                    "usage_page": format!("0x{:04X}", dev_info.usage_page()),
+                    "usage": format!("0x{:04X}", dev_info.usage()),
+                    "bus_hint": bus_hint,
+                    "path": path_str,
+                }));
+            }
         }
     }
 
@@ -323,8 +371,9 @@ pub fn run_diagnostic_with_battery(api: &mut HidApi, known_battery: Option<u8>) 
         .collect();
 
     log::log(&format!(
-        "Diagnostic scan complete. Scanned {} devices, {} candidate configurations.",
+        "Diagnostic scan complete. Scanned {} devices (+{} non-0x1038 SteelSeries), {} candidate configurations.",
         count,
+        other_steelseries_devices.len(),
         all_candidates.len()
     ));
 
@@ -337,7 +386,8 @@ pub fn run_diagnostic_with_battery(api: &mut HidApi, known_battery: Option<u8>) 
         "devices_found": count,
         "recommended_profile": best_candidate_json,
         "all_candidate_profiles": candidates_json,
-        "devices": device_records
+        "devices": device_records,
+        "other_steelseries_devices": other_steelseries_devices
     })
 }
 
@@ -391,7 +441,8 @@ pub fn format_github_issue_markdown(report: &Value) -> String {
     }
 
     md.push_str("\n### 🔍 Detected SteelSeries HID Interfaces\n");
-    if let Some(devs) = report.get("devices").and_then(|d| d.as_array()) {
+    let devs = report.get("devices").and_then(|d| d.as_array());
+    if let Some(devs) = devs.filter(|d| !d.is_empty()) {
         for dev in devs {
             let pid = dev.get("product_id").and_then(|v| v.as_str()).unwrap_or("?");
             let name = dev
@@ -415,6 +466,32 @@ pub fn format_github_issue_markdown(report: &Value) -> String {
                 }
             }
         }
+    } else {
+        md.push_str(
+            "*(No SteelSeries USB HID interfaces with VID `0x1038` were detected. Make sure the mouse is connected via its 2.4 GHz USB dongle or USB cable rather than Bluetooth, and click a mouse button to wake it before scanning.)*\n",
+        );
+    }
+
+    if let Some(others) = report
+        .get("other_steelseries_devices")
+        .and_then(|d| d.as_array())
+        .filter(|d| !d.is_empty())
+    {
+        md.push_str("\n### 📡 Other SteelSeries HID Devices (Non-0x1038 / Bluetooth)\n");
+        for dev in others {
+            let vid = dev.get("vendor_id").and_then(|v| v.as_str()).unwrap_or("?");
+            let pid = dev.get("product_id").and_then(|v| v.as_str()).unwrap_or("?");
+            let name = dev
+                .get("product_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let bus = dev.get("bus_hint").and_then(|v| v.as_str()).unwrap_or("HID");
+            let iface = dev.get("interface").and_then(|v| v.as_i64()).unwrap_or(-1);
+            md.push_str(&format!(
+                "- **`{}`** (`{}:{}`) — {} Interface `{}`\n",
+                name, vid, pid, bus, iface
+            ));
+        }
     }
 
     md
@@ -424,13 +501,10 @@ pub fn save_diagnostic_file(custom_path: Option<&Path>) -> Result<PathBuf, Strin
     save_diagnostic_file_with_battery(custom_path, None).map(|(path, _)| path)
 }
 
-pub fn save_diagnostic_file_with_battery(
+pub fn write_diagnostic_report(
+    report: &Value,
     custom_path: Option<&Path>,
-    known_battery: Option<u8>,
-) -> Result<(PathBuf, Value), String> {
-    let mut api = HidApi::new().map_err(|e| format!("Failed to init HidApi: {}", e))?;
-    let report = run_diagnostic_with_battery(&mut api, known_battery);
-
+) -> Result<PathBuf, String> {
     let target_path = match custom_path {
         Some(p) => p.to_path_buf(),
         None => {
@@ -448,7 +522,7 @@ pub fn save_diagnostic_file_with_battery(
         }
     };
 
-    let formatted_json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+    let formatted_json = serde_json::to_string_pretty(report).map_err(|e| e.to_string())?;
     if let Some(parent) = target_path.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -459,21 +533,31 @@ pub fn save_diagnostic_file_with_battery(
         "Diagnostic report saved to {}",
         target_path.display()
     ));
+    Ok(target_path)
+}
+
+pub fn save_diagnostic_file_with_battery(
+    custom_path: Option<&Path>,
+    known_battery: Option<u8>,
+) -> Result<(PathBuf, Value), String> {
+    let mut api = HidApi::new().map_err(|e| format!("Failed to init HidApi: {}", e))?;
+    let report = run_diagnostic_with_battery(&mut api, known_battery);
+    let target_path = write_diagnostic_report(&report, custom_path)?;
     Ok((target_path, report))
 }
 
 pub fn open_file_in_file_manager(path: &Path) {
-    let path_str = path.to_string_lossy();
+    let _path_str = path.to_string_lossy();
     #[cfg(target_os = "windows")]
     {
         let _ = std::process::Command::new("explorer")
-            .args(&["/select,", &path_str])
+            .args(&["/select,", &_path_str])
             .spawn();
     }
     #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open")
-            .args(&["-R", &path_str])
+            .args(&["-R", &_path_str])
             .spawn();
     }
     #[cfg(target_os = "linux")]
@@ -535,18 +619,79 @@ mod tests {
 
     #[test]
     fn test_save_diagnostic_file_custom_path() {
-        let _guard = HID_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let temp_dir = std::env::temp_dir();
         let target_file = temp_dir.join("steelmouse_test_diag.json");
         if target_file.exists() {
             let _ = std::fs::remove_file(&target_file);
         }
 
-        if let Ok(saved_path) = save_diagnostic_file(Some(&target_file)) {
-            assert!(saved_path.exists());
-            let content = std::fs::read_to_string(&saved_path).unwrap();
-            assert!(content.contains("steelmouse_version"));
-            let _ = std::fs::remove_file(saved_path);
-        }
+        let sample_report = json!({
+            "steelmouse_version": env!("CARGO_PKG_VERSION"),
+            "os": env::consts::OS,
+            "arch": env::consts::ARCH,
+            "devices_found": 0,
+            "devices": [],
+            "other_steelseries_devices": []
+        });
+
+        let saved_path =
+            write_diagnostic_report(&sample_report, Some(&target_file)).expect("Should write JSON");
+        assert!(saved_path.exists());
+        let content = std::fs::read_to_string(&saved_path).unwrap();
+        assert!(content.contains("steelmouse_version"));
+        let _ = std::fs::remove_file(saved_path);
+    }
+
+    #[test]
+    fn test_detect_bus_hint() {
+        assert_eq!(
+            detect_bus_hint(r"\\?\HID#{00001812-0000-1000-8000-00805f9b34fb}_Dev_VID&021038_PID&1838\BTHLE"),
+            "Bluetooth"
+        );
+        assert_eq!(
+            detect_bus_hint(r"\\?\HID#VID_1038&PID_1838&MI_03#a&34d4732f&0&0000"),
+            "USB"
+        );
+        assert_eq!(detect_bus_hint("/dev/hidraw0"), "HID");
+    }
+
+    #[test]
+    fn test_format_markdown_empty_and_bluetooth_devices_issue_27() {
+        let empty_report = json!({
+            "steelmouse_version": "2.6.5",
+            "os": "windows",
+            "arch": "x86_64",
+            "user_reported_battery_percent": null,
+            "devices_found": 0,
+            "recommended_profile": null,
+            "devices": [],
+            "other_steelseries_devices": []
+        });
+        let md_empty = format_github_issue_markdown(&empty_report);
+        assert!(md_empty.contains("No SteelSeries USB HID interfaces with VID `0x1038` were detected"));
+        assert!(!md_empty.contains("Other SteelSeries HID Devices"));
+
+        let bt_report = json!({
+            "steelmouse_version": "2.6.5",
+            "os": "windows",
+            "arch": "x86_64",
+            "user_reported_battery_percent": 80,
+            "devices_found": 0,
+            "recommended_profile": null,
+            "devices": [],
+            "other_steelseries_devices": [
+                {
+                    "vendor_id": "0x0111",
+                    "product_id": "0x1838",
+                    "product_name": "SteelSeries Aerox 3 Wireless",
+                    "bus_hint": "Bluetooth",
+                    "interface": 0
+                }
+            ]
+        });
+        let md_bt = format_github_issue_markdown(&bt_report);
+        assert!(md_bt.contains("Other SteelSeries HID Devices (Non-0x1038 / Bluetooth)"));
+        assert!(md_bt.contains("SteelSeries Aerox 3 Wireless"));
+        assert!(md_bt.contains("Bluetooth"));
     }
 }

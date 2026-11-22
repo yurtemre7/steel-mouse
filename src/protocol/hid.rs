@@ -1,7 +1,7 @@
 use hidapi::{DeviceInfo, HidApi, HidDevice};
 use crate::log;
 use std::fmt;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::protocol::devices::{self, BatteryKind};
 #[cfg(test)]
@@ -10,6 +10,8 @@ use crate::protocol::tracker::BatteryTracker;
 
 const STEELSERIES_VENDOR_ID: u16 = 0x1038;
 const CHARGING_FLAG: u8 = 0x80;
+const READ_DEADLINE_MS: u64 = 450;
+const MAX_PACKETS_PER_ATTEMPT: usize = 64;
 
 #[derive(Debug, Clone)]
 pub struct BatteryInfo {
@@ -17,6 +19,7 @@ pub struct BatteryInfo {
     pub level: Option<u8>,
     pub is_charging: bool,
     pub estimated_time: Option<String>,
+    pub is_sleeping: bool,
 }
 
 impl fmt::Display for BatteryInfo {
@@ -25,14 +28,18 @@ impl fmt::Display for BatteryInfo {
             .level
             .map(|l| format!("{}%", l))
             .unwrap_or_else(|| "N/A".to_string());
-        let mut status_str = if self.is_charging {
+        let mut status_str = if self.is_sleeping {
+            "Sleeping (Last known)".to_string()
+        } else if self.is_charging {
             "Charging".to_string()
         } else {
             "Discharging".to_string()
         };
 
-        if let Some(est) = &self.estimated_time {
-            status_str.push_str(&format!(", {}", est));
+        if !self.is_sleeping {
+            if let Some(est) = &self.estimated_time {
+                status_str.push_str(&format!(", {}", est));
+            }
         }
 
         write!(f, "{}: {} ({})", self.name, level_str, status_str)
@@ -51,6 +58,8 @@ pub struct MouseManager {
     mock_charging: bool,
     api: Option<HidApi>,
     cached_device: Option<ActiveDevice>,
+    last_known_battery: Option<BatteryInfo>,
+    last_known_product_id: Option<u16>,
     tracker: BatteryTracker,
 }
 
@@ -120,6 +129,8 @@ impl MouseManager {
             mock_charging: false,
             api,
             cached_device: None,
+            last_known_battery: None,
+            last_known_product_id: None,
             tracker: BatteryTracker::new(),
         }
     }
@@ -136,12 +147,15 @@ impl MouseManager {
             self.tracker.add_sample(self.mock_level, self.mock_charging);
             let estimated_time = self.tracker.estimate_time();
 
-            return Ok(BatteryInfo {
+            let info = BatteryInfo {
                 name: "SteelSeries Aerox 3 Wireless (Mock)".to_string(),
                 level: Some(self.mock_level),
                 is_charging: self.mock_charging,
                 estimated_time,
-            });
+                is_sleeping: false,
+            };
+            self.last_known_battery = Some(info.clone());
+            return Ok(info);
         }
 
         // 1. Try polling existing open cached device handle
@@ -152,12 +166,15 @@ impl MouseManager {
                 }
                 let estimated_time = self.tracker.estimate_time();
 
-                return Ok(BatteryInfo {
+                let info = BatteryInfo {
                     name: active.name.clone(),
                     level,
                     is_charging,
                     estimated_time,
-                });
+                    is_sleeping: false,
+                };
+                self.last_known_battery = Some(info.clone());
+                return Ok(info);
             }
         }
 
@@ -183,6 +200,7 @@ impl MouseManager {
 
         let mut steelseries_count = 0;
         let mut known_wireless_mouse_found = false;
+        let mut found_wireless_pids: Vec<u16> = Vec::new();
 
         // Pass 1: Check known SteelSeries mouse profiles first so unprofiled peripherals
         // (such as keyboards or headsets enumerated earlier on the USB bus) never pre-empt them.
@@ -205,6 +223,9 @@ impl MouseManager {
                         }
 
                         known_wireless_mouse_found = true;
+                        if !found_wireless_pids.contains(&pid) {
+                            found_wireless_pids.push(pid);
+                        }
 
                         match device_info.open_device(api) {
                             Err(e) => {
@@ -224,7 +245,16 @@ impl MouseManager {
                                         let estimated_time = self.tracker.estimate_time();
                                         let name = prof.name.to_string();
                                         self.cached_device = Some(ActiveDevice { device, name: name.clone(), kind });
-                                        return Ok(BatteryInfo { name, level, is_charging, estimated_time });
+                                        let info = BatteryInfo {
+                                            name,
+                                            level,
+                                            is_charging,
+                                            estimated_time,
+                                            is_sleeping: false,
+                                        };
+                                        self.last_known_battery = Some(info.clone());
+                                        self.last_known_product_id = Some(pid);
+                                        return Ok(info);
                                     }
                                 }
                             }
@@ -266,11 +296,46 @@ impl MouseManager {
                             let name = prod_str
                                 .unwrap_or("SteelSeries Mouse")
                                 .to_string();
-                            return Ok(BatteryInfo { name, level, is_charging, estimated_time });
+                            let info = BatteryInfo {
+                                name,
+                                level,
+                                is_charging,
+                                estimated_time,
+                                is_sleeping: false,
+                            };
+                            self.last_known_battery = Some(info.clone());
+                            self.last_known_product_id = Some(pid);
+                            return Ok(info);
                         }
                     }
                 }
             }
+        }
+
+        // If the same known wireless mouse receiver is still connected on the USB bus and we
+        // have a previous live reading for it, preserve the last known battery level while the
+        // mouse is asleep or momentarily unreachable instead of flashing N/A with a red cross.
+        let same_receiver_present = self
+            .last_known_product_id
+            .map_or(false, |pid| found_wireless_pids.contains(&pid));
+        if same_receiver_present {
+            if let Some(last) = &self.last_known_battery {
+                log::log(&format!(
+                    "Known wireless receiver (PID=0x{:04x}) still present; preserving last known battery ({:?}%) as sleeping",
+                    self.last_known_product_id.unwrap_or(0),
+                    last.level
+                ));
+                return Ok(BatteryInfo {
+                    name: last.name.clone(),
+                    level: last.level,
+                    is_charging: false,
+                    estimated_time: None,
+                    is_sleeping: true,
+                });
+            }
+        } else {
+            self.last_known_battery = None;
+            self.last_known_product_id = None;
         }
 
         let err = if steelseries_count == 0 {
@@ -282,20 +347,29 @@ impl MouseManager {
         Err(err)
     }
 
-    fn query_device_battery(device: &HidDevice, kind: BatteryKind) -> Option<(Option<u8>, bool)> {
-        // Drain any stale bytes left in the HID read buffer (non-blocking, 0ms timeout)
-        let mut drain_buf = [0u8; 64];
-        while device.read_timeout(&mut drain_buf, 0).unwrap_or(0) > 0 {}
+    pub fn is_matching_aerox_response(res: &[u8], command: u8) -> bool {
+        res.len() >= 2 && (res[0] == command || (res[0] == 0x00 && res.len() >= 3 && res[1] == command))
+    }
 
+    fn query_device_battery(device: &HidDevice, kind: BatteryKind) -> Option<(Option<u8>, bool)> {
         match kind {
             BatteryKind::AeroxPrime { command } | BatteryKind::DirectAerox { command } => {
                 let is_direct = matches!(kind, BatteryKind::DirectAerox { .. });
                 for write_attempt in 0..3 {
+                    // Drain any stale bytes left in the HID read buffer (non-blocking, 0ms timeout)
+                    let mut drain_buf = [0u8; 64];
+                    while device.read_timeout(&mut drain_buf, 0).unwrap_or(0) > 0 {}
+
                     let mut req_64 = [0u8; 64];
                     req_64[0] = 0x00;
                     req_64[1] = command;
 
+                    let mut req_65 = [0u8; 65];
+                    req_65[0] = 0x00;
+                    req_65[1] = command;
+
                     let write_ok = device.write(&[0x00, command]).is_ok()
+                        || device.write(&req_65).is_ok()
                         || device.write(&req_64).is_ok()
                         || device.send_feature_report(&[0x00, command]).is_ok();
 
@@ -304,15 +378,21 @@ impl MouseManager {
                         continue;
                     }
 
-                    // Read up to 8 HID reports per write attempt (100ms timeout per packet).
+                    // Use a deadline-bounded read loop so unsolicited/interleaved reports
+                    // (e.g. 0x61 RGB/heartbeat traffic from SteelSeries GG) cannot exhaust
+                    // our wait window before the 2.4GHz mouse replies.
+                    let deadline = Instant::now() + Duration::from_millis(READ_DEADLINE_MS);
                     let mut res = [0u8; 64];
-                    for attempt in 0..6 {
-                        match device.read_timeout(&mut res, 100) {
+                    for attempt in 0..MAX_PACKETS_PER_ATTEMPT {
+                        let remaining = deadline.saturating_duration_since(Instant::now());
+                        if remaining.is_zero() {
+                            break;
+                        }
+                        let timeout_ms = remaining.as_millis().min(100) as i32;
+                        match device.read_timeout(&mut res, timeout_ms) {
                             Ok(n) if n >= 2 => {
                                 log::log(&format!("Aerox attempt {}.{} raw[0..8]={:?}", write_attempt, attempt, &res[..n.min(8)]));
-                                let is_battery_response = res[0] == command
-                                    || (res[0] == 0x00 && n >= 3 && res[1] == command);
-                                if is_battery_response {
+                                if Self::is_matching_aerox_response(&res[..n], command) {
                                     let decoded = if is_direct {
                                         Self::decode_direct_aerox_response(&res[..n])
                                     } else {
@@ -325,7 +405,7 @@ impl MouseManager {
                                 log::log(&format!("  -> Skipping (res[0]=0x{:02X}, res[1]=0x{:02X})", res[0], res[1]));
                             }
                             Ok(0) => {
-                                // 100ms read timeout - continue waiting for 2.4GHz response
+                                // Read timeout slice elapsed - continue until deadline
                                 continue;
                             }
                             Ok(_) | Err(_) => break,
@@ -337,12 +417,21 @@ impl MouseManager {
             }
             BatteryKind::Rival3Or650 => {
                 for write_attempt in 0..3 {
+                    let mut drain_buf = [0u8; 64];
+                    while device.read_timeout(&mut drain_buf, 0).unwrap_or(0) > 0 {}
+
                     let mut req_64 = [0u8; 64];
                     req_64[0] = 0x00;
                     req_64[1] = 0xAA;
                     req_64[2] = 0x01;
 
+                    let mut req_65 = [0u8; 65];
+                    req_65[0] = 0x00;
+                    req_65[1] = 0xAA;
+                    req_65[2] = 0x01;
+
                     let write_ok = device.write(&[0x00, 0xAA, 0x01]).is_ok()
+                        || device.write(&req_65).is_ok()
                         || device.write(&req_64).is_ok()
                         || device.send_feature_report(&[0x00, 0xAA, 0x01]).is_ok();
 
@@ -351,9 +440,15 @@ impl MouseManager {
                         continue;
                     }
 
+                    let deadline = Instant::now() + Duration::from_millis(READ_DEADLINE_MS);
                     let mut res = [0u8; 64];
-                    for attempt in 0..6 {
-                        match device.read_timeout(&mut res, 150) {
+                    for attempt in 0..MAX_PACKETS_PER_ATTEMPT {
+                        let remaining = deadline.saturating_duration_since(Instant::now());
+                        if remaining.is_zero() {
+                            break;
+                        }
+                        let timeout_ms = remaining.as_millis().min(150) as i32;
+                        match device.read_timeout(&mut res, timeout_ms) {
                             Ok(read_len) if read_len >= 2 => {
                                 log::log(&format!(
                                     "Rival3Or650 attempt {}.{} raw[0..8]={:?}",
@@ -740,5 +835,48 @@ mod tests {
 
         let estimate = tracker.estimate_time().expect("Should have estimate");
         assert_eq!(estimate, "~15h 0m left");
+    }
+
+    #[test]
+    fn test_ignore_interleaved_rgb_0x61_packets_issue_23() {
+        // Captured from Issue #23 Aerox 3 Wireless (1038:0x1838) Interface 3 when SteelSeries GG
+        // is streaming 0x61 RGB/heartbeat reports concurrently with 0xD2 battery queries.
+        let rgb_packet = [0x61u8, 0x00, 0x31, 0x31, 0x2E, 0x34, 0x00, 0x00];
+        assert!(!MouseManager::is_matching_aerox_response(&rgb_packet, 0xD2));
+        assert!(!MouseManager::is_matching_aerox_response(&rgb_packet, 0x92));
+
+        let valid_d2 = [0xD2u8, 18, 0x00, 0x00];
+        assert!(MouseManager::is_matching_aerox_response(&valid_d2, 0xD2));
+        assert!(!MouseManager::is_matching_aerox_response(&valid_d2, 0x92));
+
+        let valid_d2_prefixed = [0x00u8, 0xD2, 18, 0x00];
+        assert!(MouseManager::is_matching_aerox_response(&valid_d2_prefixed, 0xD2));
+    }
+
+    #[test]
+    fn test_battery_info_sleeping_display() {
+        let sleeping = BatteryInfo {
+            name: "SteelSeries Aerox 3 Wireless".to_string(),
+            level: Some(65),
+            is_charging: false,
+            estimated_time: Some("~10h 0m left".to_string()),
+            is_sleeping: true,
+        };
+        assert_eq!(
+            sleeping.to_string(),
+            "SteelSeries Aerox 3 Wireless: 65% (Sleeping (Last known))"
+        );
+
+        let awake = BatteryInfo {
+            name: "SteelSeries Aerox 3 Wireless".to_string(),
+            level: Some(65),
+            is_charging: false,
+            estimated_time: None,
+            is_sleeping: false,
+        };
+        assert_eq!(
+            awake.to_string(),
+            "SteelSeries Aerox 3 Wireless: 65% (Discharging)"
+        );
     }
 }

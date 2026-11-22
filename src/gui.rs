@@ -19,6 +19,7 @@ enum AppMessage {
 
 enum HidCommand {
     Wake,
+    Refresh,
     ReleaseDevice,
 }
 
@@ -33,8 +34,8 @@ pub fn next_error_delay(consecutive_failures: u32) -> u64 {
 
 /// Check if tray icon or tooltip needs updating based on previous and current states.
 pub fn should_update_tray_icon(
-    last_state: Option<(Option<u8>, bool, DisplayMode)>,
-    current_state: (Option<u8>, bool, DisplayMode),
+    last_state: Option<(Option<u8>, bool, bool, DisplayMode)>,
+    current_state: (Option<u8>, bool, bool, DisplayMode),
 ) -> bool {
     last_state != Some(current_state)
 }
@@ -110,12 +111,15 @@ pub fn run_tray_app(mock_mode: bool) {
                 let result = mouse_manager.fetch_battery();
                 log::log(&format!("HID worker: result={}", if result.is_ok() { "Ok" } else { "Err" }));
                 let timestamp = Local::now().format("%H:%M:%S").to_string();
-                let is_error = result.is_err();
+                let needs_retry_backoff = match &result {
+                    Ok(info) => info.is_sleeping,
+                    Err(_) => true,
+                };
                 let _ = tx2.send(AppMessage::BatteryUpdated(result, timestamp));
                 log::log("HID worker: message sent, sleeping");
 
                 let user_delta = config_for_hid.lock().unwrap().time_delta;
-                let sleep_secs = if is_error {
+                let sleep_secs = if needs_retry_backoff {
                     consecutive_failures = consecutive_failures.saturating_add(1);
                     next_error_delay(consecutive_failures).min(user_delta)
                 } else {
@@ -127,6 +131,12 @@ pub fn run_tray_app(mock_mode: bool) {
                 while elapsed < sleep_secs {
                     match wake_rx.recv_timeout(Duration::from_secs(1)) {
                         Ok(HidCommand::Wake) => break,
+                        Ok(HidCommand::Refresh) => {
+                            log::log("HID worker: manual refresh requested, clearing cached device handle");
+                            mouse_manager.clear_cache();
+                            consecutive_failures = 0;
+                            break;
+                        }
                         Ok(HidCommand::ReleaseDevice) => {
                             log::log("HID worker: releasing cached device handle for analyzer");
                             mouse_manager.clear_cache();
@@ -158,7 +168,7 @@ pub fn run_tray_app(mock_mode: bool) {
 
     let (quit_id, refresh_id, hover_id, icon_id, autostart_id, export_diag_id, interval_ids) = tray_menu_ids;
 
-    let mut last_tray_state: Option<(Option<u8>, bool, DisplayMode)> = None;
+    let mut last_tray_state: Option<(Option<u8>, bool, bool, DisplayMode)> = None;
 
     event_loop.run(move |_event, _, control_flow| {
         *control_flow = ControlFlow::WaitUntil(
@@ -168,19 +178,22 @@ pub fn run_tray_app(mock_mode: bool) {
         // 1. Process incoming battery updates from HID worker
         while let Ok(AppMessage::BatteryUpdated(battery_res, timestamp)) = rx.try_recv() {
             log::log(&format!("tray loop: received BatteryUpdated at {}", timestamp));
-            let (info_opt, is_charging, level_opt) = match &battery_res {
+            let (info_opt, is_charging, is_sleeping, level_opt) = match &battery_res {
                 Ok(info) => {
-                    log::log(&format!("  -> Ok: name='{}' level={:?} charging={}", info.name, info.level, info.is_charging));
-                    (Some(info.clone()), info.is_charging, info.level)
+                    log::log(&format!(
+                        "  -> Ok: name='{}' level={:?} charging={} sleeping={}",
+                        info.name, info.level, info.is_charging, info.is_sleeping
+                    ));
+                    (Some(info.clone()), info.is_charging, info.is_sleeping, info.level)
                 }
                 Err(err) => {
                     log::log(&format!("  -> Err: {}", err));
-                    (None, false, None)
+                    (None, false, false, None)
                 }
             };
 
             let cfg = current_config.lock().unwrap().clone();
-            let current_state = (level_opt, is_charging, cfg.display_mode);
+            let current_state = (level_opt, is_charging, is_sleeping, cfg.display_mode);
 
             if should_update_tray_icon(last_tray_state, current_state) {
                 log::log("tray loop: updating tray icon and tooltip (state changed)");
@@ -188,9 +201,11 @@ pub fn run_tray_app(mock_mode: bool) {
 
                 if let Some(tray) = tray_icon.as_mut() {
                     let _ = tray.set_icon(Some(new_icon));
-                    let tooltip = level_opt
-                        .map(|l| format!("Battery: {}%", l))
-                        .unwrap_or_else(|| "SteelMouse: N/A".to_string());
+                    let tooltip = match (level_opt, is_sleeping) {
+                        (Some(l), true) => format!("Battery: {}% (Asleep)", l),
+                        (Some(l), false) => format!("Battery: {}%", l),
+                        (None, _) => "SteelMouse: N/A".to_string(),
+                    };
                     let _ = tray.set_tooltip(Some(tooltip));
                 }
 
@@ -210,7 +225,7 @@ pub fn run_tray_app(mock_mode: bool) {
                 std::process::exit(0);
             } else if event.id == refresh_id {
                 log::log("Refresh clicked");
-                let _ = wake_tx.send(HidCommand::Wake);
+                let _ = wake_tx.send(HidCommand::Refresh);
             } else if event.id == autostart_id {
                 let m = tray_menu.lock().unwrap();
                 let is_checked = m.autostart_item.is_checked();
@@ -273,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_should_update_tray_icon() {
-        let initial = (Some(85), false, DisplayMode::Hover);
+        let initial = (Some(85), false, false, DisplayMode::Hover);
         // Initially, no previous state -> should update
         assert!(should_update_tray_icon(None, initial));
 
@@ -281,19 +296,23 @@ mod tests {
         assert!(!should_update_tray_icon(Some(initial), initial));
 
         // Battery level changed -> should update
-        let changed_level = (Some(84), false, DisplayMode::Hover);
+        let changed_level = (Some(84), false, false, DisplayMode::Hover);
         assert!(should_update_tray_icon(Some(initial), changed_level));
 
         // Charging state changed -> should update
-        let changed_charging = (Some(85), true, DisplayMode::Hover);
+        let changed_charging = (Some(85), true, false, DisplayMode::Hover);
         assert!(should_update_tray_icon(Some(initial), changed_charging));
 
+        // Sleep state changed -> should update tooltip
+        let sleeping_state = (Some(85), false, true, DisplayMode::Hover);
+        assert!(should_update_tray_icon(Some(initial), sleeping_state));
+
         // Display mode changed -> should update
-        let changed_mode = (Some(85), false, DisplayMode::Icon);
+        let changed_mode = (Some(85), false, false, DisplayMode::Icon);
         assert!(should_update_tray_icon(Some(initial), changed_mode));
 
         // Error state transition (level Some -> None) -> should update
-        let error_state = (None, false, DisplayMode::Hover);
+        let error_state = (None, false, false, DisplayMode::Hover);
         assert!(should_update_tray_icon(Some(initial), error_state));
 
         // Repeated error state -> should skip update
