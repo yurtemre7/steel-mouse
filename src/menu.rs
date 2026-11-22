@@ -46,7 +46,9 @@ impl TrayMenu {
 
         let status_text = battery_info
             .map(|b| {
-                if b.is_charging {
+                if b.is_sleeping {
+                    "Status: Sleeping (Last known)"
+                } else if b.is_charging {
                     "Status: Charging"
                 } else {
                     "Status: Discharging"
@@ -191,7 +193,9 @@ impl TrayMenu {
 
         let status_text = battery_info
             .map(|b| {
-                if b.is_charging {
+                if b.is_sleeping {
+                    "Status: Sleeping (Last known)"
+                } else if b.is_charging {
                     "Status: Charging"
                 } else {
                     "Status: Discharging"

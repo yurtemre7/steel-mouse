@@ -139,6 +139,16 @@ impl eframe::App for AnalyzerApp {
             if let Some(report) = &self.last_report {
                 ui.separator();
 
+                let dev_count = report
+                    .get("devices_found")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let other_count = report
+                    .get("other_steelseries_devices")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.len())
+                    .unwrap_or(0);
+
                 if let Some(rec) = report.get("recommended_profile").filter(|v| !v.is_null()) {
                     let prod_name = rec
                         .get("product_name")
@@ -179,6 +189,21 @@ impl eframe::App for AnalyzerApp {
                             );
                         }
                     });
+                } else if dev_count == 0 {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(255, 149, 0),
+                        "⚠ No SteelSeries USB HID devices (VID 0x1038) were detected.",
+                    );
+                    if other_count > 0 {
+                        ui.label(format!(
+                            "Found {} non-USB / Bluetooth SteelSeries HID interface(s). SteelMouse requires the 2.4 GHz USB wireless dongle or wired USB connection (Bluetooth HID does not expose SteelSeries USB telemetry).",
+                            other_count
+                        ));
+                    } else {
+                        ui.label(
+                            "Make sure your mouse is connected via its 2.4 GHz USB dongle or USB cable (not Bluetooth), click a button to wake it, and click Scan & Analyze again.",
+                        );
+                    }
                 } else {
                     ui.colored_label(
                         egui::Color32::YELLOW,
@@ -202,26 +227,35 @@ impl eframe::App for AnalyzerApp {
                 });
 
                 ui.add_space(6.0);
-                let title = report
-                    .get("recommended_profile")
-                    .and_then(|r| r.get("product_name"))
-                    .and_then(|n| n.as_str())
-                    .map(|n| format!("Support for {}", n))
-                    .unwrap_or_else(|| "Support for new SteelSeries mouse".to_string());
+                if dev_count > 0 || other_count > 0 {
+                    let title = report
+                        .get("recommended_profile")
+                        .and_then(|r| r.get("product_name"))
+                        .and_then(|n| n.as_str())
+                        .map(|n| format!("Support for {}", n))
+                        .unwrap_or_else(|| "Support for new SteelSeries mouse".to_string());
 
-                let issue_url = format!(
-                    "https://github.com/yurtemre7/steel-mouse/issues/new?title={}&body={}",
-                    url_encode(&title),
-                    url_encode(&self.markdown_report)
-                );
-
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("🔗 Submit Issue in Browser:");
-                    ui.hyperlink_to(
-                        "https://github.com/yurtemre7/steel-mouse/issues/new (Click to open pre-filled issue)",
-                        &issue_url,
+                    let issue_url = format!(
+                        "https://github.com/yurtemre7/steel-mouse/issues/new?title={}&body={}",
+                        url_encode(&title),
+                        url_encode(&self.markdown_report)
                     );
-                });
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("🔗 Submit Issue in Browser:");
+                        ui.hyperlink_to(
+                            "https://github.com/yurtemre7/steel-mouse/issues/new (Click to open pre-filled issue)",
+                            &issue_url,
+                        );
+                    });
+                } else {
+                    ui.label(
+                        egui::RichText::new(
+                            "Connect your SteelSeries mouse via 2.4 GHz USB dongle or USB cable and re-scan before opening a GitHub issue so diagnostic data is included.",
+                        )
+                        .weak(),
+                    );
+                }
 
                 ui.add_space(6.0);
                 ui.label("GitHub Issue Preview (Markdown):");
